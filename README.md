@@ -29,6 +29,18 @@ all by Julia's package manager, updating is a matter of:
 assuming `$PHOENIX` is the path to the top level directory of the `Phoenix.jl`
 repository.
 
+Note that the build process assumes that ActiveSilicon libraries have been
+installed in the usual directory `/usr/local/activesilicon`.  If this is not
+the case, to update the code and build the dependencies, you'll have to do
+something like:
+
+    cd "$PHOENIX/deps"
+    git pull
+    make PHX_DIR="$INSTALLDIR"
+
+where `$INSTALLDIR` is the path where ActiveSilicon libraries have been
+installed.
+
 
 ## Usage
 
