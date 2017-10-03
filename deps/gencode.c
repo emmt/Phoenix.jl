@@ -158,7 +158,7 @@ int main()
   println("# forbidden operation).");
   println("immutable Param{G,S}");
   println("    ident::Cuint");
-  println("    Param(ident::Integer) = new(ident)");
+  println("    Param{G,S}(ident::Integer) where {G,S} = new{G,S}(ident)");
   println("end");
   println("Param{G,S}(::Type{G}, ::Type{S}, ident::Integer) = Param{G,S}(ident)");
 

@@ -59,7 +59,7 @@ Abstract type `Register` is used to store (among others) the address (as an
 `UInt32` value) of a CoaXPress register.  All concrete sub-types must have a
 first member `addr::UInt32`.
 """
-abstract Register
+abstract type Register end
 
 ## Manage to automatically convert a register to a pointer to its
 ## address member. See refpointer.jl
@@ -78,7 +78,7 @@ immutable RegisterValue{T} <: Register
     addr::UInt32
 end
 
-typealias RegisterEnum RegisterValue{UInt32}
+const RegisterEnum = RegisterValue{UInt32}
 
 """
 `RegisterAddress(addr)` stores at address `addr` the address of another
