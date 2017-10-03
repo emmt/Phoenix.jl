@@ -69,7 +69,6 @@ int main()
 
   newline();
   println("# Name of dynamic libraries.");
-  println("const _JLPLIB = joinpath(dirname(@__FILE__),\"..\",\"tools\",\"JuliaPhoenix.so\")");
   println("const _PHXLIB = \"" PHX_DLL "\"");
 
   newline();
