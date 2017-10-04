@@ -48,7 +48,7 @@ A typical example of using the `Phoenix` module to acquire and process
 some frames is:
 
     using Phoenix
-    cam = Phoenix.Camera(MikrotronMC408xModel)
+    cam = open(Phoenix.MikrotronMC408xModel)
     cfg = getconfiguration(cam)
     cfg.roi_x = ...
     cfg.roi_y = ...
@@ -66,7 +66,7 @@ some frames is:
         end
     end
     abort(cam)
-
+    close(cam)
 
 Step-by-step explanations are now given:
 
@@ -75,10 +75,10 @@ Step-by-step explanations are now given:
 imports `Phoenix` module to directly access exported methods (and
 constants);
 
-    cam = Phoenix.Camera(MikrotronMC408xModel)
+    cam = open(Phoenix.MikrotronMC408xModel)
 
 creates a new camera instance `cam` for the camera model
-`MikrotronMC408xModel`;
+`MikrotronMC408xModel` and open its board connection;
 
     cfg = getconfiguration(cam)
 
@@ -116,4 +116,26 @@ that it can be used to acquire another image;
     abort(cam)
 
 aborts acquisition without waiting for the current frame to finish (another
-possibility is to call `stop(cam)` which waits for the current frame).
+possibility is to call `stop(cam)` which waits for the current frame);
+
+    close(cam)
+
+closes the camera (this is optional, closing is automatically done when the
+camera is finalised by the garbage collector).
+
+
+## Tricks
+
+To figure out the type of connected camera, you may use the
+`Phoenix.GenericCameraModel` model and the `summary` method:
+
+    summary(open(Phoenix.GenericCameraModel))
+
+Note that you may specify the configuration file, board number, *etc.* as
+keywords to the `open` method above.
+
+
+To figure out which camera models are implemented, you exploit introspection
+and do:
+
+    subtypes(Phoenix.CameraModel)
