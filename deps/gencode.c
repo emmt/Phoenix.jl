@@ -98,7 +98,7 @@ int main()
 
   newline();
   println("# This structure is used to specify a control port.");
-  println("immutable ControlPort");
+  println("struct ControlPort");
   println("    port::UInt32");
   println("end");
 
@@ -106,7 +106,7 @@ int main()
   println("# This structure is used to specify the address and context of a block of");
   println("# memory (used to specify user allocated image buffers).  It can be used");
   println("# either for virtual or physical addresses.");
-  println("immutable ImageBuff");
+  println("struct ImageBuff");
   println("    pvAddress::Ptr{Void}");
   println("    pvContext::Ptr{Void}");
   println("end");
@@ -151,12 +151,14 @@ int main()
   println("end");
 
   newline();
-  println("# `Param{G,S}(ident)` is used to store a specific parameter definition.");
-  println("# Argument `ident` is the value of the enumeration constant identifying");
-  println("# the parameter, `G` and `S` are the parameter types for the get and");
-  println("# set operations repectively (which may be `Void` for `S` to indicate a");
-  println("# forbidden operation).");
-  println("immutable Param{G,S}");
+  println("\"\"\"\n");
+  println("`Param{G,S}(ident)` is used to store a specific parameter definition.");
+  println("Argument `ident` is the value of the enumeration constant identifying");
+  println("the parameter, `G` and `S` are the parameter types for the get and");
+  println("set operations repectively (which may be `Void` for `S` to indicate a");
+  println("forbidden operation).");
+  println("\"\"\"\n");
+  println("struct Param{G,S}");
   println("    ident::Cuint");
   println("    Param{G,S}(ident::Integer) where {G,S} = new{G,S}(ident)");
   println("end");
@@ -1302,12 +1304,12 @@ int main()
   println("# bits 23 to 16 are the specific parameter identifier");
   println("# ");
   println("# Configuration File");
-  define("Param{Cstring,Cstring}", PHX_CONFIG_FILE, NULL);
+  define("Param{String,String}", PHX_CONFIG_FILE, NULL);
 
   println("# Board Information and Configuration");
   define("Param{BoardInfo,Void}",        PHX_BOARD_INFO,       NULL);
   define("Param{PcieInfo,Void}",         PHX_PCIE_INFO,        NULL);
-  define("Param{Cstring,Void}",          PHX_BOARD_PROPERTIES, NULL);
+  define("Param{String,Void}",           PHX_BOARD_PROPERTIES, NULL);
   define("Param{ParamValue,ParamValue}", PHX_BOARD_VARIANT,    NULL);
   define("Param{ParamValue,ParamValue}", PHX_BOARD_NUMBER,     NULL);
   define("Param{ParamValue,ParamValue}", PHX_CHANNEL_NUMBER,   NULL);
@@ -1534,8 +1536,8 @@ int main()
   define("Param{ParamValue,ParamValue}", PHX_COMMS_PARITY,   NULL);
   define("Param{UInt32,UInt32}",         PHX_COMMS_SPEED,    NULL);
   define("Param{ParamValue,ParamValue}", PHX_COMMS_FLOW,     NULL);
-  /*define("Param{Cstring,Cstring}",     PHX_COMMS_PREACQ,   NULL);*/
-  /*define("Param{Cstring,Cstring}",     PHX_COMMS_POSTACQ,  NULL);*/
+  /*define("Param{String,String}",       PHX_COMMS_PREACQ,   NULL);*/
+  /*define("Param{String,String}",       PHX_COMMS_POSTACQ,  NULL);*/
 
   println("# Miscellaneous Settings");
   define("Param{ParamValue,ParamValue}", PHX_DATASRC,       NULL);
@@ -1543,11 +1545,12 @@ int main()
   define("Param{ParamValue,ParamValue}", PHX_DATARATE_TEST, NULL);
 
   println("# Error Information");
-  define("Param{Status,Void}",  PHX_ERROR_FIRST_ERRNUM,    NULL);
-  define("Param{Status,Void}",  PHX_ERROR_LAST_ERRNUM,     NULL);
-  define("Param{Cstring,Void}", PHX_ERROR_FIRST_ERRSTRING, NULL);
-  define("Param{Cstring,Void}", PHX_ERROR_LAST_ERRSTRING,  NULL);
+  define("Param{Status,Void}", PHX_ERROR_FIRST_ERRNUM,    NULL);
+  define("Param{Status,Void}", PHX_ERROR_LAST_ERRNUM,     NULL);
+  define("Param{String,Void}", PHX_ERROR_FIRST_ERRSTRING, NULL);
+  define("Param{String,Void}", PHX_ERROR_LAST_ERRSTRING,  NULL);
 
+  println("");
   println("# Undocumented Parameters (types have to be determined!)");
   println("# ======================================================");
   define("Param{Void,Void}", PHX_ACQTRIG_DELAY,              NULL);
