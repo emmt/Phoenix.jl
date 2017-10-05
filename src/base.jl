@@ -29,13 +29,11 @@ Base.iswritable(::Param{T,A}) where {T,A<:Writable} = true
 # to write configuration scripts.
 
 Base.getindex(cam::Camera, param::Param) = getparam(cam, param)
-Base.getindex(cam::Camera, reg::RegisterString) = read(cam, reg)
-Base.getindex(cam::Camera, reg::RegisterValue) = read(cam, reg)
+Base.getindex(cam::Camera, reg::Register) = read(cam, reg)
 Base.getindex(cam::Camera, key) = error("invalid key type `$(typeof(key))`")
 
 Base.setindex!(cam::Camera, val, param::Param) = setparam!(cam, param, val)
-Base.setindex!(cam::Camera, val, reg::RegisterString) = write(cam, reg, val)
-Base.setindex!(cam::Camera, val, reg::RegisterValue) = write(cam, reg, val)
+Base.setindex!(cam::Camera, val, reg::Register) = write(cam, reg, val)
 Base.setindex!(cam::Camera, val, key) = error("invalid key type `$(typeof(key))`")
 
 @inline function _check(status::Status)
@@ -115,13 +113,13 @@ setparam!(cam::Camera, param::Param) =
 # ===================================
 #
 
-function read(cam::Camera, reg::RegisterString{N}) where {N}
+function read(cam::Camera, reg::RegisterString{N,A}) where {N,A<:Readable}
     buf = Array{UInt8}(N)
     _check(_readregister(cam, reg, buf, N))
     return unsafe_string(pointer(buf))
 end
 
-function write(cam::Camera, reg::RegisterString{N}, str::AbstractString) where {N}
+function write(cam::Camera, reg::RegisterString{N,A}, str::AbstractString) where {N,A<:Writable}
     buf = Array{UInt8}(N)
     m = min(length(str), N)
     @inbounds for i in 1:m
@@ -134,7 +132,7 @@ function write(cam::Camera, reg::RegisterString{N}, str::AbstractString) where {
     _check(_writeregister(cam, reg, buf, N))
 end
 
-function read(cam::Camera, reg::RegisterValue{T}) where {T}
+function read(cam::Camera, reg::RegisterValue{T,A}) where {T,A<:Readable}
     status, value = _read(cam, reg)
     _check(status)
     return value
@@ -142,35 +140,41 @@ end
 
 # This low-level version which returns a status and a value and does not throw
 # errors is needed by some camera models.
-function _read(cam::Camera, reg::RegisterValue{T}) where {T}
+function _read(cam::Camera, reg::RegisterValue{T,A}) where {T,A<:Readable}
     buf = Ref{T}(0)
     status = _readregister(cam, reg, buf, sizeof(T))
     return status, (status == PHX_OK && cam.swap ? bswap(buf[]) : buf[])
 end
 
-function write(cam::Camera, reg::RegisterConstant{T}) where {T}
+function write(cam::Camera, reg::RegisterConstant{T,A}) where {T,A<:Writable}
     data = Ref{T}(cam.swap ? bswap(reg.value) : reg.value)
     _check(_writeregister(cam, reg, data, sizeof(T)))
 end
 
-write(cam::Camera, reg::RegisterValue{T}, val) where {T} =
+write(cam::Camera, reg::RegisterValue{T,A}, val) where {T,A<:Writable} =
     _check(_write(cam, reg, val))
 
 # This low-level version which returns a status and does not throw errors is
 # needed by some camera models.
-function _write(cam::Camera, reg::RegisterValue{T}, val) where {T}
+function _write(cam::Camera, reg::RegisterValue{T,A}, val) where {T,A<:Writable}
     tmp = convert(T, val)
     buf = Ref{T}(cam.swap ? bswap(tmp) : tmp)
     _writeregister(cam, reg, buf, sizeof(T))
 end
 
 # Indirect read of register.
-function read(cam::Camera, reg::RegisterAddress, ::Type{T}) where {T}
+function read(cam::Camera, reg::RegisterAddress{T,A}) where {T,A<:Readable}
     buf = Ref{UInt32}(0)
     _check(_readregister(cam, reg, buf, 4))
     addr = (cam.swap ? bswap(buf[]) : buf[])
-    read(cam, RegisterValue{T}(addr))
+    read(cam, RegisterValue{T,A}(addr))
 end
+
+write(cam::Camera, reg::Register, args...) =
+    error("attempt to set an unwritable CoaXPress parameter")
+
+read(cam::Camera, reg::Register) =
+    error("attempt to get an unredable CoaXPress parameter")
 
 readstream(args...) = _check(_readstream(args...))
 
@@ -302,17 +306,17 @@ function Base.open(cam::Camera;
         end
 
         # Get current width and height and initialize parameters.
-        width = read(cam, CXP_WIDTH_ADDRESS, UInt32)
-        height = read(cam, CXP_HEIGHT_ADDRESS, UInt32)
+        width  = cam[CXP_WIDTH_ADDRESS]
+        height = cam[CXP_HEIGHT_ADDRESS]
         cam[PHX_CAM_ACTIVE_XOFFSET] = 0
         cam[PHX_CAM_ACTIVE_YOFFSET] = 0
         cam[PHX_CAM_ACTIVE_XLENGTH] = width
         cam[PHX_CAM_ACTIVE_YLENGTH] = height
 
         if ! quiet
-            vendorname = cam[CXP_DEVICE_VENDOR_NAME]
-            modelname = cam[CXP_DEVICE_MODEL_NAME]
-            pixelformat = read(cam, CXP_PIXEL_FORMAT_ADDRESS, UInt32)
+            vendorname  = cam[CXP_DEVICE_VENDOR_NAME]
+            modelname   = cam[CXP_DEVICE_MODEL_NAME]
+            pixelformat = cam[CXP_PIXEL_FORMAT_ADDRESS]
             info("Vendor name:  $vendorname")
             info("Model name:   $modelname")
             info("Image size:   $width × $height pixels")
@@ -366,13 +370,31 @@ function Base.close(cam::Camera)
     return cam
 end
 
-_getparameter(handle::Handle, param::Cuint, ptr::Union{Ptr{T},Ref{T}}) where {T} =
-    ccall(_PHX_ParameterGet, Status, (Handle, Cuint, Ptr{T}),
-          handle, param, ptr)
+"""
+    _getparameter(h, param, buf) -> status
 
-_setparameter!(handle::Handle, param::Cuint, ptr::Union{Ptr{T},Ref{T}}) where {T} =
+retrieves the parameter `param` for the camera handle `h` and stores
+its value in `buf`.
+
+See also: [`_setparameter!`](@ref)
+
+"""
+_getparameter(handle::Handle, param::Cuint, buf::Union{Ptr{T},Ref{T}}) where {T} =
+    ccall(_PHX_ParameterGet, Status, (Handle, Cuint, Ptr{T}),
+          handle, param, buf)
+
+"""
+    _setparameter!(h, param, buf) -> status
+
+sets the parameter `param` for the camera handle `h` to the value stored in
+`buf`.
+
+See also: [`_getparameter`](@ref)
+
+"""
+_setparameter!(handle::Handle, param::Cuint, buf::Union{Ptr{T},Ref{T}}) where {T} =
     ccall(_PHX_ParameterSet, Status, (Handle, Cuint, Ptr{T}),
-          handle, param, ptr)
+          handle, param, buf)
 
 """
     _readstream(cam, cmd, ptr) -> status
@@ -391,8 +413,7 @@ _readstream(cam::Camera, cmd::Acq, ptr::Ptr{Void}) =
 """
     _readregister(cam, reg, data, num, timeout = cam.timeout)
 
-reatds register `reg` from camera `cam`.
-
+reads register `reg` from camera `cam`.
 
 See also: [`_readcontrol`](@ref), [`_writeregister`](@ref).
 
