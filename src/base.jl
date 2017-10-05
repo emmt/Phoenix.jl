@@ -67,17 +67,19 @@ end
 # ================================
 
 """
-    getparam(cam, param) -> val
+    getparam(cam, key) -> val
 
-yields the value `val` of parameter `param` for the camera `cam`.  Beware that
-the camera board must be open before retrieving parameters (otherwise you get a
+yields the value `val` associated with `key` for the camera `cam`.  Argument
+`key` can be a frame grabber parameter or a CoaXPress register (which must be
+readable, *i.e.* `isreadable(key)` must be true).  Beware that the camera board
+must be open before retrieving parameters (otherwise you get a
 `PHX_ERROR_BAD_HANDLE` error).
 
 This method implements the syntax:
 
-    cam[param] -> val
+    cam[key] -> val
 
-See also: [`setparam!`](@ref).
+See also: [`setparam!`](@ref), [`isreadable`](@ref).
 
 """
 function getparam(cam::Camera, param::Param{T,A}) :: T where {T<:Integer,A<:Readable}
@@ -101,16 +103,48 @@ end
 getparam(cam::Camera, param::Param) =
     error("unreadable parameter or undetermined parameter type")
 
+function getparam(cam::Camera, reg::RegisterString{N,A}) where {N,A<:Readable}
+    buf = Array{UInt8}(N)
+    _check(_readregister(cam, reg, buf, N))
+    return unsafe_string(pointer(buf))
+end
+
+function getparam(cam::Camera, reg::RegisterValue{T,A}) where {T,A<:Readable}
+    status, value = _getparam(cam, reg)
+    _check(status)
+    return value
+end
+
+# This low-level version which returns a status and a value and does not throw
+# errors is needed by some camera models.
+function _getparam(cam::Camera, reg::RegisterValue{T,A}) where {T,A<:Readable}
+    buf = Ref{T}(0)
+    status = _readregister(cam, reg, buf, sizeof(T))
+    return status, (status == PHX_OK && cam.swap ? bswap(buf[]) : buf[])
+end
+
+# Indirect read of register.
+function getparam(cam::Camera, reg::RegisterAddress{T,A}) where {T,A<:Readable}
+    buf = Ref{UInt32}(0)
+    _check(_readregister(cam, reg, buf, 4))
+    addr = (cam.swap ? bswap(buf[]) : buf[])
+    getparam(cam, RegisterValue{T,A}(addr))
+end
+
+getparam(cam::Camera, reg::Register) =
+    error("attempt to get an unreadable CoaXPress parameter")
+
 """
-    setparam!(cam, param, val)
+    setparam!(cam, key, val)
 
-set parameter `param` of camera `cam` to the value `val`.  This method
-implements the syntax:
+set the value associated with `key` to be `val` for the camera `cam`.  Argument
+`key` can be a frame grabber parameter or a CoaXPress register (which must be
+writable, *i.e.* `iswritable(key)` must be true).  This method implements the
+syntax:
 
-    cam[param] = val
+    cam[key] = val
 
-
-See also: [`getparam`](@ref).
+See also: [`getparam`](@ref), [`iswritable`](@ref).
 
 """
 setparam!(cam::Camera, param::Param{T,A}, val::Integer) where {T<:Integer,A<:Writable} =
@@ -128,17 +162,6 @@ setparam!(cam::Camera, param::Param) =
 #                  cam.handle, param, val))
 # end
 
-#------------------------------------------------------------------------------
-# Reading/Writing CoaXPress Registers
-# ===================================
-#
-
-function getparam(cam::Camera, reg::RegisterString{N,A}) where {N,A<:Readable}
-    buf = Array{UInt8}(N)
-    _check(_readregister(cam, reg, buf, N))
-    return unsafe_string(pointer(buf))
-end
-
 function setparam!(cam::Camera, reg::RegisterString{N,A}, str::AbstractString) where {N,A<:Writable}
     buf = Array{UInt8}(N)
     m = min(length(str), N)
@@ -152,25 +175,6 @@ function setparam!(cam::Camera, reg::RegisterString{N,A}, str::AbstractString) w
     _check(_writeregister(cam, reg, buf, N))
 end
 
-function getparam(cam::Camera, reg::RegisterValue{T,A}) where {T,A<:Readable}
-    status, value = _getparam(cam, reg)
-    _check(status)
-    return value
-end
-
-# This low-level version which returns a status and a value and does not throw
-# errors is needed by some camera models.
-function _getparam(cam::Camera, reg::RegisterValue{T,A}) where {T,A<:Readable}
-    buf = Ref{T}(0)
-    status = _readregister(cam, reg, buf, sizeof(T))
-    return status, (status == PHX_OK && cam.swap ? bswap(buf[]) : buf[])
-end
-
-function Base.send(cam::Camera, reg::RegisterCommand{T}) where {T}
-    data = Ref{T}(cam.swap ? bswap(reg.value) : reg.value)
-    _check(_writeregister(cam, reg, data, sizeof(T)))
-end
-
 setparam!(cam::Camera, reg::RegisterValue{T,A}, val) where {T,A<:Writable} =
     _check(_setparam!(cam, reg, val))
 
@@ -182,19 +186,19 @@ function _setparam!(cam::Camera, reg::RegisterValue{T,A}, val) where {T,A<:Writa
     _writeregister(cam, reg, buf, sizeof(T))
 end
 
-# Indirect read of register.
-function getparam(cam::Camera, reg::RegisterAddress{T,A}) where {T,A<:Readable}
-    buf = Ref{UInt32}(0)
-    _check(_readregister(cam, reg, buf, 4))
-    addr = (cam.swap ? bswap(buf[]) : buf[])
-    getparam(cam, RegisterValue{T,A}(addr))
-end
-
 setparam!(cam::Camera, reg::Register, args...) =
     error("attempt to set an unwritable CoaXPress parameter")
 
-getparam(cam::Camera, reg::Register) =
-    error("attempt to get an unredable CoaXPress parameter")
+
+#------------------------------------------------------------------------------
+# Reading/Writing CoaXPress Registers
+# ===================================
+#
+
+function Base.send(cam::Camera, reg::RegisterCommand{T}) where {T}
+    data = Ref{T}(cam.swap ? bswap(reg.value) : reg.value)
+    _check(_writeregister(cam, reg, data, sizeof(T)))
+end
 
 readstream(args...) = _check(_readstream(args...))
 
