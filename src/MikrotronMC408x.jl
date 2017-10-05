@@ -17,7 +17,7 @@ module MikrotronMC408x
 using Phoenix
 import Phoenix: Camera, CameraModel,
     Readable, Writable, ReadOnly, ReadWrite, WriteOnly, Unreachable,
-    RegisterValue, RegisterString, RegisterConstant,
+    RegisterValue, RegisterString, RegisterCommand,
     RegisterEnum, RegisterAddress, Interval,
     subsampling_parameter, getconfig!, setconfig!,
     getfullwidth, getfullheight, restrict,
@@ -37,8 +37,8 @@ end
 #
 
 const ACQUISITION_MODE  = RegisterValue{UInt32,ReadWrite}(0x8200)
-const ACQUISITION_START = RegisterConstant{UInt32,WriteOnly}(0x8204, 1)
-const ACQUISITION_STOP  = RegisterConstant{UInt32,WriteOnly}(0x8208, 1)
+const ACQUISITION_START = RegisterCommand{UInt32}(0x8204, 1)
+const ACQUISITION_STOP  = RegisterCommand{UInt32}(0x8208, 1)
 
 const ACQUISITION_BURST_FRAME_COUNT = RegisterValue{UInt32,ReadWrite}(0x8914)
 const TRIGGER_SELECTOR              = RegisterEnum{ReadWrite}(0x8900)
@@ -61,10 +61,10 @@ const SEQUENCER_SET_SELECTOR        = RegisterValue{Void,Unreachable}(0x8878)
 const SEQUENCER_SET_SAVE            = RegisterValue{Void,Unreachable}(0x887C)
 const SEQUENCER_SET_NEXT            = RegisterValue{Void,Unreachable}(0x8888)
 const USER_SET_SELECTOR             = RegisterEnum{ReadWrite}(0x8820)
-const USER_SET_LOAD                 = RegisterConstant{UInt32,WriteOnly}(0x8824, 1) # FIXME:
-const USER_SET_SAVE                 = RegisterConstant{UInt32,WriteOnly}(0x8828, 1) # FIXME:
+const USER_SET_LOAD                 = RegisterCommand{UInt32}(0x8824, 1) # FIXME:
+const USER_SET_SAVE                 = RegisterCommand{UInt32}(0x8828, 1) # FIXME:
 const USER_SET_DEFAULT_SELECTOR     = RegisterEnum{ReadWrite}(0x882C)
-const DEVICE_RESET                  = RegisterConstant{UInt32,WriteOnly}(0x8300, 1)
+const DEVICE_RESET                  = RegisterCommand{UInt32}(0x8300, 1)
 
 # Image Format Control.
 const HORIZONTAL_INCREMENT          = 16

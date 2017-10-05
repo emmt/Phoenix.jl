@@ -146,7 +146,7 @@ function _read(cam::Camera, reg::RegisterValue{T,A}) where {T,A<:Readable}
     return status, (status == PHX_OK && cam.swap ? bswap(buf[]) : buf[])
 end
 
-function write(cam::Camera, reg::RegisterConstant{T,A}) where {T,A<:Writable}
+function write(cam::Camera, reg::RegisterCommand{T}) where {T}
     data = Ref{T}(cam.swap ? bswap(reg.value) : reg.value)
     _check(_writeregister(cam, reg, data, sizeof(T)))
 end

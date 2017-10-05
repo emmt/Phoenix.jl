@@ -72,7 +72,10 @@ abstract type Register end
 #end
 
 """
-`RegisterValue{T,A}(addr)` is a value of type `T` stored at address `addr` with access mode `A`.
+
+`RegisterValue{T,A}(addr)` is a value of type `T` stored at address `addr` with
+access mode `A`.
+
 """
 immutable RegisterValue{T,A} <: Register where {T,A<:AccessMode}
     addr::UInt32
@@ -92,18 +95,20 @@ end
 
 """
 
-`RegisterConstant{T}(addr,val)` is a constant of type `T` stored at address
-`addr` with value `val` and access mode `A`.
+`RegisterCommand{T}(addr,val)` is to write a constant of type `T` and value
+`val` at address `addr`.
 
 """
-immutable RegisterConstant{T,A} <: Register where {T,A<:AccessMode}
+immutable RegisterCommand{T} <: Register where {T}
     addr::UInt32
     value::T
 end
 
 """
+
 `RegisterString{N,A}(addr)` is a fixed length string of length `N` stored at
 address `addr` with access mode `A`.
+
 """
 immutable RegisterString{N,A} <: Register where {N,A<:AccessMode}
     addr::UInt32
