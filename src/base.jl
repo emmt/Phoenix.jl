@@ -29,11 +29,11 @@ Base.iswritable(::Param{T,A}) where {T,A<:Writable} = true
 # to write configuration scripts.
 
 Base.getindex(cam::Camera, param::Param) = getparam(cam, param)
-Base.getindex(cam::Camera, reg::Register) = read(cam, reg)
+Base.getindex(cam::Camera, reg::Register) = getparam(cam, reg)
 Base.getindex(cam::Camera, key) = error("invalid key type `$(typeof(key))`")
 
 Base.setindex!(cam::Camera, val, param::Param) = setparam!(cam, param, val)
-Base.setindex!(cam::Camera, val, reg::Register) = write(cam, reg, val)
+Base.setindex!(cam::Camera, val, reg::Register) = setparam!(cam, reg, val)
 Base.setindex!(cam::Camera, val, key) = error("invalid key type `$(typeof(key))`")
 
 @inline function _check(status::Status)
@@ -113,13 +113,13 @@ setparam!(cam::Camera, param::Param) =
 # ===================================
 #
 
-function read(cam::Camera, reg::RegisterString{N,A}) where {N,A<:Readable}
+function getparam(cam::Camera, reg::RegisterString{N,A}) where {N,A<:Readable}
     buf = Array{UInt8}(N)
     _check(_readregister(cam, reg, buf, N))
     return unsafe_string(pointer(buf))
 end
 
-function write(cam::Camera, reg::RegisterString{N,A}, str::AbstractString) where {N,A<:Writable}
+function setparam!(cam::Camera, reg::RegisterString{N,A}, str::AbstractString) where {N,A<:Writable}
     buf = Array{UInt8}(N)
     m = min(length(str), N)
     @inbounds for i in 1:m
@@ -132,48 +132,48 @@ function write(cam::Camera, reg::RegisterString{N,A}, str::AbstractString) where
     _check(_writeregister(cam, reg, buf, N))
 end
 
-function read(cam::Camera, reg::RegisterValue{T,A}) where {T,A<:Readable}
-    status, value = _read(cam, reg)
+function getparam(cam::Camera, reg::RegisterValue{T,A}) where {T,A<:Readable}
+    status, value = _getparam(cam, reg)
     _check(status)
     return value
 end
 
 # This low-level version which returns a status and a value and does not throw
 # errors is needed by some camera models.
-function _read(cam::Camera, reg::RegisterValue{T,A}) where {T,A<:Readable}
+function _getparam(cam::Camera, reg::RegisterValue{T,A}) where {T,A<:Readable}
     buf = Ref{T}(0)
     status = _readregister(cam, reg, buf, sizeof(T))
     return status, (status == PHX_OK && cam.swap ? bswap(buf[]) : buf[])
 end
 
-function write(cam::Camera, reg::RegisterCommand{T}) where {T}
+function Base.send(cam::Camera, reg::RegisterCommand{T}) where {T}
     data = Ref{T}(cam.swap ? bswap(reg.value) : reg.value)
     _check(_writeregister(cam, reg, data, sizeof(T)))
 end
 
-write(cam::Camera, reg::RegisterValue{T,A}, val) where {T,A<:Writable} =
-    _check(_write(cam, reg, val))
+setparam!(cam::Camera, reg::RegisterValue{T,A}, val) where {T,A<:Writable} =
+    _check(_setparam!(cam, reg, val))
 
 # This low-level version which returns a status and does not throw errors is
 # needed by some camera models.
-function _write(cam::Camera, reg::RegisterValue{T,A}, val) where {T,A<:Writable}
+function _setparam!(cam::Camera, reg::RegisterValue{T,A}, val) where {T,A<:Writable}
     tmp = convert(T, val)
     buf = Ref{T}(cam.swap ? bswap(tmp) : tmp)
     _writeregister(cam, reg, buf, sizeof(T))
 end
 
 # Indirect read of register.
-function read(cam::Camera, reg::RegisterAddress{T,A}) where {T,A<:Readable}
+function getparam(cam::Camera, reg::RegisterAddress{T,A}) where {T,A<:Readable}
     buf = Ref{UInt32}(0)
     _check(_readregister(cam, reg, buf, 4))
     addr = (cam.swap ? bswap(buf[]) : buf[])
-    read(cam, RegisterValue{T,A}(addr))
+    getparam(cam, RegisterValue{T,A}(addr))
 end
 
-write(cam::Camera, reg::Register, args...) =
+setparam!(cam::Camera, reg::Register, args...) =
     error("attempt to set an unwritable CoaXPress parameter")
 
-read(cam::Camera, reg::Register) =
+getparam(cam::Camera, reg::Register) =
     error("attempt to get an unredable CoaXPress parameter")
 
 readstream(args...) = _check(_readstream(args...))
