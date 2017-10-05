@@ -70,11 +70,9 @@ int main()
   newline();
   println("# Name of dynamic libraries.");
   println("const _PHXLIB = \"" PHX_DLL "\"");
-
   newline();
   println("# Import methods for overloading them.");
   println("import Base: |, &, ~, $, convert");
-
   newline();
   println("# Types for PHX library arguments.");
   alias_uint("Handle", tHandle);
@@ -95,13 +93,11 @@ int main()
   alias_uint("Timeouts", enum eTimeouts);
   alias_enum("Status", etStat);
   alias_uint("LutCtrl", enum eLutCtrl);
-
   newline();
   println("# This structure is used to specify a control port.");
   println("struct ControlPort");
   println("    port::UInt32");
   println("end");
-
   newline();
   println("# This structure is used to specify the address and context of a block of");
   println("# memory (used to specify user allocated image buffers).  It can be used");
@@ -110,7 +106,6 @@ int main()
   println("    pvAddress::Ptr{Void}");
   println("    pvContext::Ptr{Void}");
   println("end");
-
   newline();
   println("# This structure is used to specify the address, size and context of a");
   println("# block of memory (used to specify user locked image buffers).");
@@ -119,13 +114,11 @@ int main()
   println("    qwSizeBytes::UInt64");
   println("    pvContext::Ptr{Void}");
   println("end");
-
   newline();
   println("type TimeStamp");
   println("    qwTime::UInt64");
   println("    qwEvent::UInt64");
   println("end");
-
   newline();
   println("# This structure is used to specify a colour by its individual");
   println("# components. (tColour)");
@@ -134,7 +127,6 @@ int main()
   println("    bGreen::UInt8");
   println("    bBlue::UInt8");
   println("end");
-
   newline();
   println("# This structure holds the details of a logical LUT");
   println("type LutInfo");
@@ -149,7 +141,6 @@ int main()
   println("    pwLutData::Ptr{UInt16}");
   println("    dwSize::UInt32");
   println("end");
-
   newline();
   println("\"\"\"\n");
   println("`Param{T,A}(ident)` is used to store a specific parameter definition.");
@@ -161,18 +152,9 @@ int main()
   println("    ident::Cuint");
   println("    Param{T,A}(ident::Integer) where {T,A<:AccessMode} = new{T,A}(ident)");
   println("end");
+  newline();
   println("Param(::Type{T}, ::Type{A}, ident::Integer) where {T,A<:AccessMode} =");
   println("    Param{T,A}(ident)");
-  newline();
-  println("# Overload bitwise operators.");
-  println("(~)(x::Param{T,A}) where {T,A} = Param{T,A}(~x.ident)");
-  println("(|)(x::Param{T,A}, y::Integer) where {T,A} = Param{T,A}(x.ident | y)");
-  println("(&)(x::Param{T,A}, y::Integer) where {T,A} = Param{T,A}(x.ident & y)");
-  println("($)(x::Param{T,A}, y::Integer) where {T,A} = Param{T,A}(x.ident $ y)");
-  newline();
-  println("# Conversion.");
-  println("convert(::Type{ParamValue}, x::Param) = x.ident");
-  println("convert(::Type{T}, x::Param) where {T<:Integer} = convert(T, x.ident)");
   newline();
   println("# API & Library function parameter definitions");
   println("# ============================================");

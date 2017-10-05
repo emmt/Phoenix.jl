@@ -13,8 +13,20 @@
 # Copyright (C) 2017, Éric Thiébaut.
 #
 
-# For the more general case, we do not want to pollute the other modules
-# so we left the method definition be local to this module.
+# Override bitwise operators for frame grabber parameters.
+(~)(x::Param{T,A}) where {T,A} = Param{T,A}(~x.ident)
+(|)(x::Param{T,A}, y::Integer) where {T,A} = Param{T,A}(x.ident | y)
+(&)(x::Param{T,A}, y::Integer) where {T,A} = Param{T,A}(x.ident & y)
+($)(x::Param{T,A}, y::Integer) where {T,A} = Param{T,A}(x.ident $ y)
+
+# Conversion to integer values of frame grabber parameters.
+convert(::Type{ParamValue}, x::Param) = x.ident
+convert(::Type{T}, x::Param) where {T<:Integer} = convert(T, x.ident)
+
+# Override `isreadable` and `iswritable` methods for frame grabber parameters
+# and CoaXPress registers.  For the more general case, we do not want to
+# pollute the other modules so we left the method definition be local to this
+# module.
 isreadable(x) = false
 iswritable(x) = false
 Base.isreadable(::Type{A}) where {A<:Readable} = true
@@ -23,6 +35,14 @@ Base.isreadable(::Param) = false
 Base.iswritable(::Param) = false
 Base.isreadable(::Param{T,A}) where {T,A<:Readable} = true
 Base.iswritable(::Param{T,A}) where {T,A<:Writable} = true
+Base.isreadable(::Register) = false
+Base.iswritable(::Register) = false
+Base.isreadable(::RegisterValue{T,A}) where {T,A<:Readable} = true
+Base.iswritable(::RegisterValue{T,A}) where {T,A<:Writable} = true
+Base.isreadable(::RegisterAddress{T,A}) where {T,A<:Readable} = true
+Base.iswritable(::RegisterAddress{T,A}) where {T,A<:Writable} = true
+Base.isreadable(::RegisterString{N,A}) where {N,A<:Readable} = true
+Base.iswritable(::RegisterString{N,A}) where {N,A<:Writable} = true
 
 
 # Make a camera instance usable as an indexable object, which is useful
