@@ -44,6 +44,17 @@ cat >"$DEST" <<'EOF'
 # Copyright (C) 2017, Éric Thiébaut.
 #
 
+# Abstract (i.e., non-instanciable) types used to indicate whether
+# read and/or write access is granted.
+abstract type AccessMode end
+abstract type Unreachable <: AccessMode end
+abstract type ReadOnly    <: AccessMode end
+abstract type WriteOnly   <: AccessMode end
+abstract type ReadWrite   <: AccessMode end
+const Readable = Union{ReadWrite,ReadOnly}
+const Writable = Union{ReadWrite,WriteOnly}
+
+
 # Export prefixed constants.
 export
 EOF

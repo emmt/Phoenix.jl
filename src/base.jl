@@ -13,6 +13,17 @@
 # Copyright (C) 2017, Éric Thiébaut.
 #
 
+# For the more general case, we do not want to pollute the other modules
+# so we left the method definition be local to this module.
+isreadable(x) = false
+iswritable(x) = false
+Base.isreadable(::Type{A}) where {A<:Readable} = true
+Base.iswritable(::Type{A}) where {A<:Writable} = true
+Base.isreadable(::Param) = false
+Base.iswritable(::Param) = false
+Base.isreadable(::Param{T,A}) where {T,A<:Readable} = true
+Base.iswritable(::Param{T,A}) where {T,A<:Writable} = true
+
 """
 
 `is_coaxpress(cam)` yields whether Phoenix camara `cam` is a CoaXPress
@@ -29,12 +40,12 @@ is_coaxpress(cam::Camera) = cam.coaxpress
 Base.getindex(cam::Camera, param::Param) = getparam(cam, param)
 Base.getindex(cam::Camera, reg::RegisterString) = read(cam, reg)
 Base.getindex(cam::Camera, reg::RegisterValue) = read(cam, reg)
-Base.getindex(cam::Camera, key) = error("invalid key type $(typeof(key))")
+Base.getindex(cam::Camera, key) = error("invalid key type `$(typeof(key))`")
 
 Base.setindex!(cam::Camera, val, param::Param) = setparam!(cam, param, val)
 Base.setindex!(cam::Camera, val, reg::RegisterString) = write(cam, reg, val)
 Base.setindex!(cam::Camera, val, reg::RegisterValue) = write(cam, reg, val)
-Base.setindex!(cam::Camera, val, key) = error("invalid key type $(typeof(key))")
+Base.setindex!(cam::Camera, val, key) = error("invalid key type `$(typeof(key))`")
 
 @inline function _check(status::Status)
     status == PHX_OK || throw(PHXError(status))
@@ -125,28 +136,28 @@ This method implements the syntax:
 See also: [`setparam!`](@ref).
 
 """
-function getparam{T<:Integer,A}(cam::Camera, param::Param{T,A}) :: T
+function getparam(cam::Camera, param::Param{T,A}) :: T where {T<:Integer,A<:Readable}
     ref = Ref{T}(0)
     _check(_getparam(cam.handle, param.ident, ref))
     return ref[]
 end
 
-function getparam{A}(cam::Camera, param::Param{String,A}) :: String
+function getparam(cam::Camera, param::Param{String,A}) :: String where {A<:Readable}
     ref = Ref{Ptr{UInt8}}(0)
     _check(_getparam(cam.handle, param.ident, ref))
     return (ref[] == C_NULL ? "" : unsafe_string(ref[]))
 end
 
-function getparam{A}(cam::Camera, param::Param{Ptr{Void},A}) :: Ptr{Void}
+function getparam(cam::Camera, param::Param{Ptr{Void},A}) :: Ptr{Void} where {A<:Readable}
     ref = Ref{Ptr{Void}}(0)
     _check(_getparam(cam.handle, param.ident, ref))
     return ref[]
 end
 
-getparam{A}(cam::Camera, param::Param{Void,A}) =
-    error("write only parameter or undetermined parameter type")
+getparam(cam::Camera, param::Param) =
+    error("unreadable parameter or undetermined parameter type")
 
-_getparam{T}(handle::Handle, param::Cuint, ref::Ref{T}) =
+_getparam(handle::Handle, param::Cuint, ref::Ref{T}) where {T} =
     ccall(_PHX_ParameterGet, Status, (Handle, Cuint, Ptr{T}),
           handle, param, ref)
 
@@ -162,22 +173,22 @@ implements the syntax:
 See also: [`getparam`](@ref).
 
 """
-setparam!{A,T<:Integer}(cam::Camera, param::Param{A,T}, val::Integer) =
+setparam!(cam::Camera, param::Param{T,A}, val::Integer) where {T<:Integer,A<:Writable} =
     _check(_setparam!(cam.handle, param.ident, Ref{T}(val)))
 
-setparam!{A}(cam::Camera, param::Param{A,String}, val::AbstractString) =
+setparam!(cam::Camera, param::Param{String,A}, val::AbstractString) where {A<:Writable} =
     _check(_setparam!(cam.handle, param.ident, Ref(pointer(cstring(val)))))
 
-setparam!{A}(cam::Camera, param::Param{A,Void}) =
-    error("read only parameter or undetermined parameter type")
+setparam!(cam::Camera, param::Param) =
+    error("unwritable parameter or undetermined parameter type")
 
 # # FIXME: only for ImageBuff?
-# function setparam!{A,T}(cam::Camera, param::Param{A,Ptr{T}}, val::Vector{T})
+# function setparam!(cam::Camera, param::Param{Ptr{T},A}, val::Vector{T}) where {T,A<:Writable}
 #     _check(ccall(_PHX_ParameterSet, Status, (Handle, Cuint, Ptr{T}),
 #                  cam.handle, param, val))
 # end
 
-_setparam!{T}(handle::Handle, param::Cuint, ref::Ref{T}) =
+_setparam!(handle::Handle, param::Cuint, ref::Ref{T}) where {T} =
     ccall(_PHX_ParameterSet, Status, (Handle, Cuint, Ptr{T}),
           handle, param, ref)
 
@@ -186,13 +197,13 @@ _setparam!{T}(handle::Handle, param::Cuint, ref::Ref{T}) =
 # ===================================
 #
 
-function read{N}(cam::Camera, reg::RegisterString{N})
+function read(cam::Camera, reg::RegisterString{N}) where {N}
     buf = Array{UInt8}(N)
     _check(_readregister(cam, reg, buf, N))
     return unsafe_string(pointer(buf))
 end
 
-function write{N}(cam::Camera, reg::RegisterString{N}, str::AbstractString)
+function write(cam::Camera, reg::RegisterString{N}, str::AbstractString) where {N}
     @assert isascii(str)
     buf = Array{UInt8}(N)
     n = min(length(str), N)
@@ -205,25 +216,38 @@ function write{N}(cam::Camera, reg::RegisterString{N}, str::AbstractString)
     _check(_writeregister(cam, reg, buf, N))
 end
 
-function read{T}(cam::Camera, reg::RegisterValue{T})
-    buf = Ref{T}(0)
-    _check(_readregister(cam, reg, buf, sizeof(T)))
-    return (cam.swap ? bswap(buf[]) : buf[]) :: T
+function read(cam::Camera, reg::RegisterValue{T}) where {T}
+    status, value = _read(cam, reg)
+    _check(status)
+    return value
 end
 
-function write{T}(cam::Camera, reg::RegisterConstant{T})
+# This low-level version which returns a status and a value and does not throw
+# errors is needed by some camera models.
+function _read(cam::Camera, reg::RegisterValue{T}) where {T}
+    buf = Ref{T}(0)
+    status = _readregister(cam, reg, buf, sizeof(T))
+    return status, (status == PHX_OK && cam.swap ? bswap(buf[]) : buf[])
+end
+
+function write(cam::Camera, reg::RegisterConstant{T}) where {T}
     data = Ref{T}(cam.swap ? bswap(reg.value) : reg.value)
     _check(_writeregister(cam, reg, data, sizeof(T)))
 end
 
-function write{T}(cam::Camera, reg::RegisterValue{T}, value)
-    temp = convert(T, value)
-    data = Ref{T}(cam.swap ? bswap(temp) : temp)
-    _check(_writeregister(cam, reg, data, sizeof(T)))
+write(cam::Camera, reg::RegisterValue{T}, val) where {T} =
+    _check(_write(cam, reg, val))
+
+# This low-level version which returns a status and does not throw errors is
+# needed by some camera models.
+function _write(cam::Camera, reg::RegisterValue{T}, val) where {T}
+    tmp = convert(T, val)
+    buf = Ref{T}(cam.swap ? bswap(tmp) : tmp)
+    _writeregister(cam, reg, buf, sizeof(T))
 end
 
 # Indirect read of register.
-function read{T}(cam::Camera, reg::RegisterAddress, ::Type{T})
+function read(cam::Camera, reg::RegisterAddress, ::Type{T}) where {T}
     buf = Ref{UInt32}(0)
     _check(_readregister(cam, reg, buf, 4))
     addr = (cam.swap ? bswap(buf[]) : buf[])
@@ -293,7 +317,7 @@ performed after creating the camera and setting some initial parameters.
 See also: [`close`](@ref).
 
 """
-Base.open{M<:CameraModel}(::Type{M}; kwds...) =
+Base.open(::Type{M}; kwds...) where {M<:CameraModel} =
     open(Camera{M}(); kwds...)
 
 function Base.open(cam::Camera;
@@ -301,7 +325,8 @@ function Base.open(cam::Camera;
                    boardtype::Integer = 0,
                    boardnumber::Integer = PHX_BOARD_AUTO,
                    channelnumber::Integer = PHX_CHANNEL_AUTO,
-                   boardmode::Integer = PHX_MODE_NORMAL)
+                   boardmode::Integer = PHX_MODE_NORMAL,
+                   quiet::Bool = false)
     # Check state.
     if cam.state != 0
         if cam.state == 1 || cam.state == 2
@@ -358,17 +383,23 @@ function Base.open(cam::Camera;
             error("unexpected magic number for CoaXPress camera")
         end
 
-        # Get current width and height.
+        # Get current width and height and initialize parameters.
         width = read(cam, CXP_WIDTH_ADDRESS, UInt32)
         height = read(cam, CXP_HEIGHT_ADDRESS, UInt32)
+        cam[PHX_CAM_ACTIVE_XOFFSET] = 0
+        cam[PHX_CAM_ACTIVE_YOFFSET] = 0
         cam[PHX_CAM_ACTIVE_XLENGTH] = width
         cam[PHX_CAM_ACTIVE_YLENGTH] = height
 
-        # Get device vendor name and device model name.
-        vendorname = cam[CXP_DEVICE_VENDOR_NAME]
-        modelname = cam[CXP_DEVICE_MODEL_NAME]
-        println("vendor name: $vendorname")
-        println("model name:  $modelname")
+        if ! quiet
+            vendorname = cam[CXP_DEVICE_VENDOR_NAME]
+            modelname = cam[CXP_DEVICE_MODEL_NAME]
+            pixelformat = read(cam, CXP_PIXEL_FORMAT_ADDRESS, UInt32)
+            info("Vendor name:  $vendorname")
+            info("Model name:   $modelname")
+            info("Image size:   $width × $height pixels")
+            info("Pixel format: 0x$(hex(pixelformat))")
+        end
     end
 
     # Apply specific post-open configuration.
@@ -474,7 +505,6 @@ end
     _writeregister(cam, reg, data, num, timeout = cam.timeout)
 
 writes register `reg` to camera `cam`.
-
 
 See also: [`_writecontrol`](@ref), [`_readregister`](@ref).
 
