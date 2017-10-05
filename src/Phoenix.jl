@@ -14,27 +14,27 @@
 
 module Phoenix
 
-import Base: read, write, open, close
+import Base: read, write
 
-export PHXError, stop, abort
+export
+    PHXError,
+    stop,
+    abort,
+    setconfig!,
+    getconfig!,
+    fixconfig!,
+    getfullwidth,
+    getfullheight,
+    getfullsize
 
-# Cope with changing version...
-if Base.VERSION < v"0.5"
-    include("compat.jl")
-end
-
-# Get definitions of basic types and constants for Phoenix frame grabber
-# and for CoaXPress cameras.
 include("constants.jl")
 include("CoaXPress.jl")
 include("types.jl")
-
 include("base.jl")
+include("utils.jl")
 include("errors.jl")
 #include("config.jl")
 #include("acquisition.jl")
-
-# Load various camera models.
 include("models.jl")
 
 end # module Phoenix

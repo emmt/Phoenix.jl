@@ -24,15 +24,6 @@ Base.iswritable(::Param) = false
 Base.isreadable(::Param{T,A}) where {T,A<:Readable} = true
 Base.iswritable(::Param{T,A}) where {T,A<:Writable} = true
 
-"""
-
-`is_coaxpress(cam)` yields whether Phoenix camara `cam` is a CoaXPress
-controlled camera.
-
-See also: [`Phoenix.Camera`](@ref).
-
-"""
-is_coaxpress(cam::Camera) = cam.coaxpress
 
 # Make a camera instance usable as an indexable object, which is useful
 # to write configuration scripts.
@@ -52,71 +43,6 @@ Base.setindex!(cam::Camera, val, key) = error("invalid key type `$(typeof(key))`
     nothing
 end
 
-"""
-    cstring(str)
-
-yields a vector of bytes (`UInt8`) with the contents of the string `str` and
-properly zero-terminated.  This buffer is independent from the input string and
-its contents can be overwritten.  An error is thrown if `str` contains any
-embedded NUL characters (which would cause the string to be silently truncated
-if the C routine treats NUL as the terminator).
-
-An alternative (without the checking of embedded NUL characters) is:
-
-    push!(convert(Vector{UInt8}, str), convert(UInt8, 0))
-
-"""
-function cstring(str::AbstractString) :: Array{UInt8}
-    n = length(str)
-    buf = Array{UInt8}(n + 1)
-    i = 0
-    for c in str
-        c != '\0' || error("string must not have embedded NUL characters")
-        i += 1
-        buf[i] = c
-    end
-    buf[n + 1] = 0
-    return buf
-end
-
-
-function Base.summary(cam::Camera)
-
-    # Get hardware revision.
-    @printf("Hardware revision:       %.2x:%.2x:%.2x\n",
-            cam[PHX_REV_HW_MAJOR],
-            cam[PHX_REV_HW_MINOR],
-            cam[PHX_REV_HW_SUBMINOR])
-
-    # Get software revision.
-    @printf("Software revision:       %.2x:%.2x:%.2x\n",
-            cam[PHX_REV_SW_MAJOR],
-            cam[PHX_REV_SW_MINOR],
-            cam[PHX_REV_SW_SUBMINOR])
-
-    # Get the board properties.
-    println("Board properties:")
-    for str in split(cam[PHX_BOARD_PROPERTIES], '\n', keep = false)
-        println("    ", str)
-    end
-
-    # CoaXPress camera?
-    @printf("CoaXPress camera:         %s\n",
-            (is_coaxpress(cam) ? "true" : "false"))
-    if is_coaxpress(cam)
-
-    end
-
-   @printf("Camera active xoffset:    %4d\n",
-           Int(cam[PHX_CAM_ACTIVE_XOFFSET]))
-   @printf("Camera active yoffset:    %4d\n",
-           Int(cam[PHX_CAM_ACTIVE_YOFFSET]))
-   @printf("Camera active xlength:    %4d\n",
-           Int(cam[PHX_CAM_ACTIVE_XLENGTH]))
-   @printf("Camera active ylength:    %4d\n",
-           Int(cam[PHX_CAM_ACTIVE_YLENGTH]))
-
-end
 
 #-------------------------------------------------------------------------------
 # Get/set Frame Grabber Parameters
@@ -138,28 +64,24 @@ See also: [`setparam!`](@ref).
 """
 function getparam(cam::Camera, param::Param{T,A}) :: T where {T<:Integer,A<:Readable}
     ref = Ref{T}(0)
-    _check(_getparam(cam.handle, param.ident, ref))
+    _check(_getparameter(cam.handle, param.ident, ref))
     return ref[]
 end
 
 function getparam(cam::Camera, param::Param{String,A}) :: String where {A<:Readable}
     ref = Ref{Ptr{UInt8}}(0)
-    _check(_getparam(cam.handle, param.ident, ref))
+    _check(_getparameter(cam.handle, param.ident, ref))
     return (ref[] == C_NULL ? "" : unsafe_string(ref[]))
 end
 
 function getparam(cam::Camera, param::Param{Ptr{Void},A}) :: Ptr{Void} where {A<:Readable}
     ref = Ref{Ptr{Void}}(0)
-    _check(_getparam(cam.handle, param.ident, ref))
+    _check(_getparameter(cam.handle, param.ident, ref))
     return ref[]
 end
 
 getparam(cam::Camera, param::Param) =
     error("unreadable parameter or undetermined parameter type")
-
-_getparam(handle::Handle, param::Cuint, ref::Ref{T}) where {T} =
-    ccall(_PHX_ParameterGet, Status, (Handle, Cuint, Ptr{T}),
-          handle, param, ref)
 
 """
     setparam!(cam, param, val)
@@ -174,10 +96,10 @@ See also: [`getparam`](@ref).
 
 """
 setparam!(cam::Camera, param::Param{T,A}, val::Integer) where {T<:Integer,A<:Writable} =
-    _check(_setparam!(cam.handle, param.ident, Ref{T}(val)))
+    _check(_setparameter!(cam.handle, param.ident, Ref{T}(val)))
 
 setparam!(cam::Camera, param::Param{String,A}, val::AbstractString) where {A<:Writable} =
-    _check(_setparam!(cam.handle, param.ident, Ref(pointer(cstring(val)))))
+    _check(_setparameter!(cam.handle, param.ident, Ref(pointer(cstring(val)))))
 
 setparam!(cam::Camera, param::Param) =
     error("unwritable parameter or undetermined parameter type")
@@ -187,10 +109,6 @@ setparam!(cam::Camera, param::Param) =
 #     _check(ccall(_PHX_ParameterSet, Status, (Handle, Cuint, Ptr{T}),
 #                  cam.handle, param, val))
 # end
-
-_setparam!(handle::Handle, param::Cuint, ref::Ref{T}) where {T} =
-    ccall(_PHX_ParameterSet, Status, (Handle, Cuint, Ptr{T}),
-          handle, param, ref)
 
 #------------------------------------------------------------------------------
 # Reading/Writing CoaXPress Registers
@@ -204,13 +122,13 @@ function read(cam::Camera, reg::RegisterString{N}) where {N}
 end
 
 function write(cam::Camera, reg::RegisterString{N}, str::AbstractString) where {N}
-    @assert isascii(str)
     buf = Array{UInt8}(N)
-    n = min(length(str), N)
-    @inbounds for i in 1:n
-        buf[i] = str[i]
+    m = min(length(str), N)
+    @inbounds for i in 1:m
+        (c = str[i]) != '\0' || error("string must not have embedded NUL characters")
+        buf[i] = c
     end
-    @inbounds for i in n+1:N
+    @inbounds for i in m+1:N
         buf[i] = zero(UInt8)
     end
     _check(_writeregister(cam, reg, buf, N))
@@ -350,19 +268,19 @@ function Base.open(cam::Camera;
 
     # Set specific parameters.
     if boardtype != 0
-        _check(_setparam!(cam.handle,
-                          PHX_BOARD_VARIANT.ident, ref_boardtype))
+        _check(_setparameter!(cam.handle,
+                              PHX_BOARD_VARIANT.ident, ref_boardtype))
     end
-    _check(_setparam!(cam.handle,
-                      PHX_BOARD_NUMBER.ident, ref_boardnumber))
-    _check(_setparam!(cam.handle,
-                      PHX_CHANNEL_NUMBER.ident, ref_channelnumber))
-    _check(_setparam!(cam.handle,
-                      PHX_CONFIG_MODE.ident, ref_boardmode))
+    _check(_setparameter!(cam.handle,
+                          PHX_BOARD_NUMBER.ident, ref_boardnumber))
+    _check(_setparameter!(cam.handle,
+                          PHX_CHANNEL_NUMBER.ident, ref_channelnumber))
+    _check(_setparameter!(cam.handle,
+                          PHX_CONFIG_MODE.ident, ref_boardmode))
 
     # Set configuration file.
-    _check(_setparam!(cam.handle,
-                      PHX_CONFIG_FILE.ident, ref_configfile))
+    _check(_setparameter!(cam.handle,
+                          PHX_CONFIG_FILE.ident, ref_configfile))
 
     # Open the camera.
     _check(ccall(_PHX_Open, Status, (Handle,), cam.handle))
@@ -447,6 +365,14 @@ function Base.close(cam::Camera)
     end
     return cam
 end
+
+_getparameter(handle::Handle, param::Cuint, ptr::Union{Ptr{T},Ref{T}}) where {T} =
+    ccall(_PHX_ParameterGet, Status, (Handle, Cuint, Ptr{T}),
+          handle, param, ptr)
+
+_setparameter!(handle::Handle, param::Cuint, ptr::Union{Ptr{T},Ref{T}}) where {T} =
+    ccall(_PHX_ParameterSet, Status, (Handle, Cuint, Ptr{T}),
+          handle, param, ptr)
 
 """
     _readstream(cam, cmd, ptr) -> status
