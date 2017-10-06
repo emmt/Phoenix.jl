@@ -24,10 +24,6 @@ import Phoenix: Camera, CameraModel,
     assert_coaxpress, is_coaxpress,
     _openhook, _starthook, _stophook
 
-struct ConfigParam{}
-
-end
-
 #
 # CoaXPress camera constants for a Mikrotron MC408x camera.  These values have
 # been extracted from the XML configuration file of the camera.
