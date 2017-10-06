@@ -32,7 +32,7 @@ include("base.jl")
 include("utils.jl")
 include("errors.jl")
 #include("config.jl")
-#include("acquisition.jl")
+include("acquisition.jl")
 include("models.jl")
 
 end # module Phoenix
