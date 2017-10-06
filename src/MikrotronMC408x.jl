@@ -20,9 +20,17 @@ import Phoenix: Camera, CameraModel,
     RegisterValue, RegisterString, RegisterCommand,
     RegisterEnum, RegisterAddress, Interval,
     subsampling_parameter, getconfig!, setconfig!,
-    getfullwidth, getfullheight, restrict,
-    assert_coaxpress, is_coaxpress,
-    _openhook, _starthook, _stophook
+    getfullwidth,
+    getfullheight,
+    restrict,
+    assert_coaxpress,
+    is_coaxpress,
+    _check,
+    _getparam, getparam,
+    _setparam!, setparam!,
+    _openhook,
+    _starthook,
+    _stophook
 
 #
 # CoaXPress camera constants for a Mikrotron MC408x camera.  These values have
@@ -281,5 +289,37 @@ getfullwidth(cam::Camera{MikrotronMC408xModel}) =
 
 getfullheight(cam::Camera{MikrotronMC408xModel}) =
     Int(cam[SENSOR_HEIGHT])
+
+# This overloading of the method is to treat specifically certain problematic
+# parameters such as the pixel format.
+function setparam!(cam::Camera{MikrotronMC408xModel},
+                   reg::RegisterValue{T,A}, val) where {T,A<:Writable}
+    info("hacked version!")
+    status = _setparam!(cam, reg, val)
+    if (status != PHX_OK && reg.addr == PIXEL_FORMAT.addr
+        && (val == PIXEL_FORMAT_MONO8 || val == PIXEL_FORMAT_MONO10 ||
+            val == PIXEL_FORMAT_BAYERGR8 || val == PIXEL_FORMAT_BAYERGR10))
+        info("hack triggered")
+        # For some reasons, setting the pixel format returns an error (with
+        # code `PHX_ERROR_MALLOC_FAILED`) which, in practice can be ignored as,
+        # after a while, getting the pixel format yields the correct value.  A
+        # number of queries of the pixel format are necessary (usually, the
+        # first one yields an error, the second one yields a 0x07d0 pixel
+        # format which corresponds to nothing, the third one yields the correct
+        # value).
+        #
+        # To cope with this issue, we set pixel format ignoring errors and
+        # repeatedly query the pixel format until it succeeds.  To avoid
+        # alarming the user, printing of error messages is disabled during this
+        # process.
+        for i in 1:5
+            if _getparam(cam, reg) == (PHX_OK, val)
+                return nothing
+            end
+        end
+        error("failed to change pixel format to 0x", hex(val))
+    end
+    _check(status)
+end
 
 end # module
