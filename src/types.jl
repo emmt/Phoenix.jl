@@ -23,7 +23,8 @@ abstract type CameraModel end
 mutable struct Camera{M<:CameraModel}
     state::Int # 0 initially, 1 when camera open, 2 while acquiring
     handle::Handle
-    #vbufs::Vector{ImageBuff} # virtual buffers currently used
+    bufs::Vector{Array{T,2}} where {T} # image buffers for acquisition
+    vbufs::Vector{ImageBuff} # virtual buffers currently used
     #context::AcquisitionContext # context shared with acquisition callback
     timeout::UInt32 # time out (in ms) for reading/writing registers
     swap::Bool # swap bytes for read/write control connection?
@@ -38,7 +39,8 @@ mutable struct Camera{M<:CameraModel}
 
         # Create the instance and attach the destroy callback.
         cam = new{M}(0, handle[],
-                     #Vector{ImageBuff}(0),
+                     Vector{Array{UInt8,2}}(0),
+                     Vector{ImageBuff}(0),
                      #AcquisitionContext(),
                      500, false, false)
         finalizer(cam, _destroy)
@@ -133,3 +135,13 @@ struct Interval{T}
         new{T}(min, max, stp)
     end
 end
+
+# Colors (FIXME: use Julia package ColorTypes at https://github.com/JuliaGraphics/ColorTypes.jl)
+
+struct RGB{T}
+    r::T
+    g::T
+    b::T
+end
+const RGB24 = RGB{UInt8}
+const RGB48 = RGB{UInt16}
