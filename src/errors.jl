@@ -22,7 +22,7 @@ Base.showerror(io::IO, e::PHXError) =
 
 yields the error message corresponding to `code`.
 
-See also: [`geterrorsymbol`](@ref)
+See also: [`geterrorsymbol`](@ref), [`printerror`](@ref).
 
 """
 function geterrormessage(code::Integer)
@@ -61,7 +61,44 @@ end
 
 yields the symbol corresponding to status value `code`.
 
-See also: [`geterrormessage`](@ref)
+See also: [`geterrormessage`](@ref), [`printerror`](@ref).
 
 """
 geterrorsymbol(code::Integer) = get(_ERRSYM, code, :PHX_UNKNOWN_STATUS)
+
+"""
+
+    printerror() -> curmode
+
+yields the current error mode which indicates whether Phoenix error messages
+are printed by the default error handler.  To choose the behavior, call:
+
+    printerror(newmode) -> oldmode
+
+which set the error mode to be `newmode` and yields the previous setting.
+
+See also: [`geterrormessage`](@ref).
+
+"""
+printerror() = _printerror[]
+printerror(newmode::Bool) =
+    (oldmode = _printerror[]; _printerror[] = newmode; oldmode)
+
+# `_printerror` is a global reference (hence non-volatile) to store whether or
+# not print error messages.  In case of error, if `_printerror[]` is true, the
+# error handler `_errorhandler` will call Phoenix default error handler (to
+# avoid using any Julia i/o routines); otherwise nothing is printed.  This
+# mecanism is intended to be able to toggle printing of error messages while
+# being thread safe because nothing from Julia is used.  You can check that the
+# following does not use Julia virtual machine by typing:
+#
+#     code_native(Phoenix._errorhandler, (Ptr{Cchar}, Cint, Ptr{Cchar}))
+#
+const _printerror = Ref{Bool}(true)
+function _errorhandler(funcname::Ptr{Cchar}, errcode::Status, reason::Ptr{Cchar})
+    if _printerror[]
+        ccall(_PHX_ErrHandlerDefault, Void, (Ptr{Cchar}, Status, Ptr{Cchar}),
+              funcname, errcode, reason)
+    end
+    return nothing
+end

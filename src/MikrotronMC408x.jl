@@ -19,12 +19,15 @@ import Phoenix: Camera, CameraModel,
     Readable, Writable, ReadOnly, ReadWrite, WriteOnly, Unreachable,
     RegisterValue, RegisterString, RegisterCommand,
     RegisterEnum, RegisterAddress, Interval,
-    subsampling_parameter, getconfig!, setconfig!,
+    subsampling_parameter,
+    getconfig!,
+    setconfig!,
     getfullwidth,
     getfullheight,
     restrict,
     assert_coaxpress,
     is_coaxpress,
+    printerror,
     _check,
     _getparam, getparam,
     _setparam!, setparam!,
@@ -294,12 +297,11 @@ getfullheight(cam::Camera{MikrotronMC408xModel}) =
 # parameters such as the pixel format.
 function setparam!(cam::Camera{MikrotronMC408xModel},
                    reg::RegisterValue{T,A}, val) where {T,A<:Writable}
-    info("hacked version!")
+    errmode = printerror(false) # temporarily switch reporting of errors
     status = _setparam!(cam, reg, val)
     if (status != PHX_OK && reg.addr == PIXEL_FORMAT.addr
         && (val == PIXEL_FORMAT_MONO8 || val == PIXEL_FORMAT_MONO10 ||
             val == PIXEL_FORMAT_BAYERGR8 || val == PIXEL_FORMAT_BAYERGR10))
-        info("hack triggered")
         # For some reasons, setting the pixel format returns an error (with
         # code `PHX_ERROR_MALLOC_FAILED`) which, in practice can be ignored as,
         # after a while, getting the pixel format yields the correct value.  A
@@ -317,8 +319,10 @@ function setparam!(cam::Camera{MikrotronMC408xModel},
                 return nothing
             end
         end
+        printerror(errmode) # restore previous mode
         error("failed to change pixel format to 0x", hex(val))
     end
+    printerror(errmode) # restore previous mode
     _check(status)
 end
 

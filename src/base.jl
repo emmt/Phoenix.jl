@@ -56,11 +56,14 @@ Base.setindex!(cam::Camera, val, param::Param) = setparam!(cam, param, val)
 Base.setindex!(cam::Camera, val, reg::Register) = setparam!(cam, reg, val)
 Base.setindex!(cam::Camera, val, key) = error("invalid key type `$(typeof(key))`")
 
-@inline function _check(status::Status)
-    status == PHX_OK || throw(PHXError(status))
-    nothing
-end
+# Other overrides.
+Base.eltype(cam::Camera) = eltype(eltype(cam.bufs))
+Base.length(cam::Camera) = length(cam.bufs)
+Base.getindex(cam::Camera, i::Integer) = getindex(cam.bufs, i)
 
+
+@inline _check(status::Status) =
+    (status == PHX_OK || throw(PHXError(status)); nothing)
 
 #-------------------------------------------------------------------------------
 # Get/set Frame Grabber Parameters
@@ -168,11 +171,11 @@ setparam!(cam::Camera, param::Param{String,A}, val::AbstractString) where {A<:Wr
 setparam!(cam::Camera, param::Param) =
     error("unwritable parameter or undetermined parameter type")
 
-# # FIXME: only for ImageBuff?
-# function setparam!(cam::Camera, param::Param{Ptr{T},A}, val::Vector{T}) where {T,A<:Writable}
-#     _check(ccall(_PHX_ParameterSet, Status, (Handle, Cuint, Ptr{T}),
-#                  cam.handle, param, val))
-# end
+function setparam!(cam::Camera, param::Param{Ptr{T},A},
+                   val::Union{Vector{T},Ptr{T},Ref{T}}) where {T,A<:Writable}
+    _check(ccall(_PHX_ParameterSet, Status, (Handle, Cuint, Ptr{T}),
+                 cam.handle, param, val))
+end
 
 function setparam!(cam::Camera, reg::RegisterString{N,A}, str::AbstractString) where {N,A<:Writable}
     buf = Array{UInt8}(N)
@@ -224,7 +227,10 @@ readstream(args...) = _check(_readstream(args...))
 #
 
 const _callback_ptr = Ref{Ptr{Void}}(0)
+const _errorhandler_ptr = Ref{Ptr{Void}}(0)
 function __init__()
+    _errorhandler_ptr[] = cfunction(_errorhandler, Void,
+                                    (Ptr{Cchar}, Status, Ptr{Cchar}))
     _callback_ptr[] = C_NULL # FIXME: use real callback here
     const name = (is_linux() ? "LD_LIBRARY_PATH" :
                   is_apple() ? "DYLD_LIBRARY_PATH" : "")

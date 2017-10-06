@@ -30,7 +30,7 @@ mutable struct Camera{M<:CameraModel}
     swap::Bool # swap bytes for read/write control connection?
     coaxpress::Bool # is it a CoaXPress camera?
 
-    function Camera{M}(errorhandler::Ptr{Void} = _PHX_ErrHandlerDefault) where {M}
+    function Camera{M}(errorhandler::Ptr{Void} = _errorhandler_ptr[]) where {M}
         # Create a new PHX handle structure.
         handle = Ref{Handle}(0)
         status = ccall(_PHX_Create, Status, (Ptr{Handle}, Ptr{Void}),
