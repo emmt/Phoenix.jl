@@ -210,7 +210,7 @@ function fixconfig!(cfg::Configuration, fullsize::NTuple{2,Int};
     fullwidth, fullheight = fullsize
 
     # Before making any changes, check buffer format.
-    bits = dst_format_bits(cfg.buf_format)
+    bits = capture_format_bits(cfg.buf_format)
     bits ≤ 0 && error("invalid (or unknown) buffer format")
 
     # First, fix dimensions and offsets of the region of interest (ROI).  This
@@ -329,12 +329,68 @@ const _DST_FORMAT_BITS = Dict{ParamValue,Int}(PHX_DST_FORMAT_Y8   =>  8,
                                               PHX_DST_FORMAT_YUV422 => 16)
 """
 
-`dst_format_bits(fmt)` yields the number of bits for the destination buffer
+`capture_format_bits(fmt)` yields the number of bits for the destination buffer
 pixel format `fmt`, *e.g.* `PHX_DST_FORMAT_Y8`.
 
+See also: [`best_capture_format`](@ref).
+
 """
-dst_format_bits(format::Integer) :: Int =
+capture_format_bits(format::Integer) :: Int =
     get(_DST_FORMAT_BITS, format, -1)
+
+"""
+
+    best_capture_format(cam) -> (T, pixelformat)
+
+yields the Julia pixel type `T` and Phoenix pixel format `pixelformat` for the
+destination image buffer(s) which are as close as possible as that of the
+source image buffer(s) for camera `cam`.  The value of `T` can be used to
+allocate a Julia array while `pixelformat` can be used to set
+`cam[PHX_DST_FORMAT]`.
+
+The method can also be called with the color format (`cam[PHX_CAM_SRC_COL]`)
+and the number of bits per pixel (`cam[PHX_CAM_SRC_DEPTH]`) of the camera:
+
+    best_capture_format(color, depth) -> (T, pixelformat)
+
+See also: [`capture_format_bits`](@ref).
+
+"""
+best_capture_format(cam::Camera) =
+    best_capture_format(cam[PHX_CAM_SRC_COL], cam[PHX_CAM_SRC_DEPTH])
+
+function best_capture_format(color::Integer, depth::Integer)
+    local T::DataType, format::ParamValue
+    if color == PHX_CAM_SRC_MONO
+        if depth ≤ 8
+            T, format = UInt8, PHX_DST_FORMAT_Y8
+        elseif depth ≤ 16
+            T, format = UInt16, PHX_DST_FORMAT_Y16
+        elseif depth ≤ 32
+            T, format = UInt16, PHX_DST_FORMAT_Y32
+        else
+            error("Unsupported monochrome camera depth $(Int(depth))")
+        end
+    elseif color == PHX_CAM_SRC_YUV422
+        T, format = UInt16, PHX_DST_FORMAT_YUV422
+    elseif color == PHX_CAM_SRC_RGB
+        if depth == 8
+            T, format = RGB24, PHX_DST_FORMAT_RGB24
+        elseif depth == 16
+            T, format = RGB48, PHX_DST_FORMAT_RGB48
+        else
+            error("Unsupported RGB camera depth $(Int(depth))")
+        end
+    elseif (color == PHX_CAM_SRC_BAY_RGGB || color == PHX_CAM_SRC_BAY_GRBG ||
+            color == PHX_CAM_SRC_BAY_GBRG || color == PHX_CAM_SRC_BAY_BGGR)
+        error("Don't know how to interpret Bayer color format (0x$(hex(color)))")
+    else
+        error("Unknown camera color format (0x$(hex(color)))")
+    end
+    @assert sizeof(T)*8 == capture_format_bits(format)
+    return T, format
+end
+
 
 """
 
