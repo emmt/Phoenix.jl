@@ -253,10 +253,10 @@ function _openhook(cam::Camera{MikrotronMC408xModel})
 end
 
 _starthook(cam::Camera{MikrotronMC408xModel}) =
-    write(cam, ACQUISITION_START)
+    send(cam, ACQUISITION_START)
 
 _stophook(cam::Camera{MikrotronMC408xModel}) =
-    write(cam, ACQUISITION_STOP)
+    send(cam, ACQUISITION_STOP)
 
 
 """

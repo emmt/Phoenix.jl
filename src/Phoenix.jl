@@ -14,8 +14,6 @@
 
 module Phoenix
 
-import Base: read, write
-
 export
     PHXError,
     stop,
