@@ -123,16 +123,28 @@ function _getparam(cam::Camera, reg::RegisterValue{T,A}) where {T,A<:Readable}
     return status, (status == PHX_OK && cam.swap ? bswap(buf[]) : buf[])
 end
 
-# Indirect read of register.
-function getparam(cam::Camera, reg::RegisterAddress{T,A}) where {T,A<:Readable}
-    buf = Ref{UInt32}(0)
-    _check(_readregister(cam, reg, buf, 4))
-    addr = (cam.swap ? bswap(buf[]) : buf[])
-    getparam(cam, RegisterValue{T,A}(addr))
-end
+getparam(cam::Camera, reg::RegisterAddress{T,A}) where {T,A<:Readable} =
+    getparam(cam, resolve(cam, reg))
 
 getparam(cam::Camera, reg::Register) =
     error("attempt to get an unreadable CoaXPress parameter")
+
+"""
+
+    resolve(cam, regaddr) -> regval
+
+yields the CoaXPress register at indirect register address `regaddr` for camera
+`cam`.
+
+See also: [`getparam`](@ref), [`setparam!`](@ref).
+
+"""
+function resolve(cam::Camera, reg::RegisterAddress{T,A}) where {T,A<:AccessMode}
+    buf = Ref{UInt32}(0)
+    _check(_readregister(cam, reg, buf, 4))
+    addr = (cam.swap ? bswap(buf[]) : buf[])
+    return RegisterValue{T,A}(addr)
+end
 
 """
     setparam!(cam, key, val)
@@ -185,6 +197,9 @@ function _setparam!(cam::Camera, reg::RegisterValue{T,A}, val) where {T,A<:Writa
     buf = Ref{T}(cam.swap ? bswap(tmp) : tmp)
     _writeregister(cam, reg, buf, sizeof(T))
 end
+
+setparam!(cam::Camera, reg::RegisterAddress{T,A}, val) where {T,A<:Writable} =
+    setparam!(cam, resolve(cam, reg), val)
 
 setparam!(cam::Camera, reg::Register, args...) =
     error("attempt to set an unwritable CoaXPress parameter")
