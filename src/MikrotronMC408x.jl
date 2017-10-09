@@ -14,17 +14,16 @@
 
 module MikrotronMC408x
 
+importall ScientificCameras
+import ScientificCameras: ScientificCamera, ROI
+using ScientificCameras.PixelFormats
 using Phoenix
+
+# FIXME: make a sub-module for that (like PixelFormats in ScientificCameras)
 import Phoenix: Camera, CameraModel,
     Readable, Writable, ReadOnly, ReadWrite, WriteOnly, Unreachable,
     RegisterValue, RegisterString, RegisterCommand,
-    RegisterEnum, RegisterAddress, Interval,
-    subsampling_parameter,
-    getconfig!,
-    setconfig!,
-    getfullwidth,
-    getfullheight,
-    restrict,
+    RegisterEnum, RegisterAddress,
     assert_coaxpress,
     is_coaxpress,
     printerror,
@@ -68,8 +67,8 @@ const SEQUENCER_SET_SELECTOR        = RegisterValue{Void,Unreachable}(0x8878)
 const SEQUENCER_SET_SAVE            = RegisterValue{Void,Unreachable}(0x887C)
 const SEQUENCER_SET_NEXT            = RegisterValue{Void,Unreachable}(0x8888)
 const USER_SET_SELECTOR             = RegisterEnum{ReadWrite}(0x8820)
-const USER_SET_LOAD                 = RegisterCommand{UInt32}(0x8824, 1) # FIXME:
-const USER_SET_SAVE                 = RegisterCommand{UInt32}(0x8828, 1) # FIXME:
+const USER_SET_LOAD                 = RegisterCommand{UInt32}(0x8824, 1)
+const USER_SET_SAVE                 = RegisterCommand{UInt32}(0x8828, 1)
 const USER_SET_DEFAULT_SELECTOR     = RegisterEnum{ReadWrite}(0x882C)
 const DEVICE_RESET                  = RegisterCommand{UInt32}(0x8300, 1)
 
@@ -119,11 +118,15 @@ const CONNECTION_CONFIG_CONNECTION3 = UInt32(0x30000)
 const CONNECTION_CONFIG_CONNECTION4 = UInt32(0x40000)
 
 const GAIN                            = RegisterValue{UInt32,ReadWrite}(0x8850)
-#const GAIN_INTERVAL                  = Interval(UInt32, 50, 1000)
+const GAIN_MIN                        =   50
+const GAIN_MAX                        = 1000
 const BLACK_LEVEL                     = RegisterValue{UInt32,ReadWrite}(0x8854)
-#const BLACK_LEVEL_INTERVAL           = Interval(UInt32, 0, 500)
+const BLACK_LEVEL_MIN                 =    0
+const BLACK_LEVEL_MAX                 =  500
 const GAMMA                           = RegisterValue{Float32,ReadWrite}(0x8858)
-#const GAMMA_INTERVAL                 = Interval(Float32, 0.1, 3.0, 0.1)
+const GAMMA_MIN                       =  0.1
+const GAMMA_MAX                       =  3.0
+const GAMMA_INCREMENT                 =  0.1
 #const LINE_SOURCE                    = RegisterEnum{ReadWrite}(0x????)
 #const LINE_SELECTOR                  = RegisterEnum{ReadWrite}(0x????)
 const LINE_INVERTER                   = RegisterEnum{ReadWrite}(0x8A20)
@@ -210,15 +213,9 @@ function _openhook(cam::Camera{MikrotronMC408xModel})
     cam[PHX_COMMS_SPEED]        = 9600
     cam[PHX_COMMS_FLOW]         = PHX_COMMS_FLOW_NONE
 
-    # Format of the image sent by the camera (the subsampling by the camera is
-    # taken into account in the computed width and height).
-    cam[PHX_CAM_SRC_DEPTH]      = depth
-    cam[PHX_CAM_ACTIVE_XOFFSET] = cam[OFFSET_X]
-    cam[PHX_CAM_ACTIVE_YOFFSET] = cam[OFFSET_Y]
-    cam[PHX_CAM_ACTIVE_XLENGTH] = width
-    cam[PHX_CAM_ACTIVE_YLENGTH] = height
-    cam[PHX_CAM_XBINNING]       = xsub
-    cam[PHX_CAM_YBINNING]       = ysub
+    # Set the format of the image sent by the camera.
+    cam[PHX_CAM_SRC_DEPTH] = depth
+    updateactiveregion(cam, width, height, xsub, ysub)
 
     # Acquisition settings.
     cam[PHX_ACQ_BLOCKING]          = PHX_ENABLE
@@ -232,10 +229,7 @@ function _openhook(cam::Camera{MikrotronMC408xModel})
     cam[PHX_TIMEOUT_DMA]           = 1_000 # milliseconds
 
     # Set source ROI to match the size of the image sent by the camera.
-    cam[PHX_ROI_SRC_XOFFSET] = 0
-    cam[PHX_ROI_SRC_YOFFSET] = 0
-    cam[PHX_ROI_XLENGTH]     = width
-    cam[PHX_ROI_YLENGTH]     = height
+    updatesourceregion(cam, 0, 0, width, height)
 
     # Setup destination buffer parameters.  The value of `PHX_BUF_DST_XLENGTH`
     # is the number of bytes per line of the destination buffer (it must be
@@ -263,6 +257,28 @@ function _openhook(cam::Camera{MikrotronMC408xModel})
     return nothing
 end
 
+function updateactiveregion(cam::Camera{MikrotronMC408xModel},
+                            width::Integer, height::Integer,
+                            xsub::Integer = 1, ysub::Integer = 1)
+    cam[PHX_CAM_ACTIVE_XOFFSET] = 0
+    cam[PHX_CAM_ACTIVE_YOFFSET] = 0
+    cam[PHX_CAM_ACTIVE_XLENGTH] = width
+    cam[PHX_CAM_ACTIVE_YLENGTH] = height
+    cam[PHX_CAM_XBINNING]       = xsub
+    cam[PHX_CAM_YBINNING]       = ysub
+    nothing
+end
+
+function updatesourceregion(cam::Camera{MikrotronMC408xModel},
+                            xoff::Integer, yoff::Integer,
+                            width::Integer, height::Integer)
+    cam[PHX_ROI_SRC_XOFFSET] = xoff
+    cam[PHX_ROI_SRC_YOFFSET] = yoff
+    cam[PHX_ROI_XLENGTH]     = width
+    cam[PHX_ROI_YLENGTH]     = height
+    nothing
+end
+
 _starthook(cam::Camera{MikrotronMC408xModel}) =
     send(cam, ACQUISITION_START)
 
@@ -287,40 +303,331 @@ getdepth(pixelformat::Integer) =
 getdepth(cam::Camera{MikrotronMC408xModel}) =
     getdepth(cam[PIXEL_FORMAT])
 
+#function _checkstate(cam::Camera, state::Int)
+#    if cam.state != state
+#        if cam.state == 2
+#            error("operation forbiden during acquisition")
+#        elseif cam.state == 1
+#        else
+#    end
+#end
+
+# Extend method.
+function setroi!(cam::Camera{MikrotronMC408xModel},
+                 xoff::Int, yoff::Int, width::Int, height::Int;
+                 quiet::Bool = false)
+    # Check arguments and retrieve current camera settings.
+    @assert cam.state == 1
+    fullwidth  = getfullwidth(cam)
+    fullheight = getfullheight(cam)
+    checkroi(xoff, yoff, width, height, fullwidth, fullheight)
+    xsub      = Int(cam[DECIMATION_HORIZONTAL])
+    ysub      = Int(cam[DECIMATION_VERTICAL])
+    oldxoff   = Int(cam[OFFSET_X])
+    oldyoff   = Int(cam[OFFSET_Y])
+    oldwidth  = Int(cam[WIDTH])
+    oldheight = Int(cam[HEIGHT])
+
+    # Fix values.
+    if xsub != one(xsub)
+        cam[DECIMATION_HORIZONTAL] = (xsub = one(xsub))
+        quiet || warn("horizontal subsampling is not yet supported")
+    end
+    if ysub !=  one(ysub)
+        cam[DECIMATION_VERTICAL] = (ysub = one(ysub))
+        quiet || warn("vertical subsampling is not yet supported")
+    end
+
+    # Compute new camera settings (to use the smallest active region within
+    # constraints) and fix settings in a specific order such that the actual
+    # camera settings are always valid.
+    newxoff   = downround(xoff, HORIZONTAL_INCREMENT)
+    newyoff   = downround(yoff, VERTICAL_INCREMENT)
+    newwidth  = upround(xoff + width,  HORIZONTAL_INCREMENT) - newxoff
+    newheight = upround(yoff + height, VERTICAL_INCREMENT) - newyoff
+    if newxoff < oldxoff
+        cam[OFFSET_X] = newxoff
+    end
+    if newwidth != oldwidth
+        cam[WIDTH] = newwidth
+    end
+    if newxoff > oldxoff
+        cam[OFFSET_X] = newxoff
+    end
+    if newyoff < oldyoff
+        cam[OFFSET_y] = newyoff
+    end
+    if newheight != oldheight
+        cam[HEIGHT] = newheight
+    end
+    if newyoff > oldyoff
+        cam[OFFSET_Y] = newyoff
+    end
+
+    # Set frame grabber paramaters.
+    updateactiveregion(cam, newwidth, newheight, xsub, ysub)
+    updatesourceregion(cam, xoff - newxoff, yoff - newyoff, width, height)
+    nothing
+end
+
+# Extend method.
+function getroi(cam::Camera{MikrotronMC408xModel};
+                quiet::Bool = false)
+
+    @assert cam.state > 0
+    local xoff::Int, yoff::Int, width::Int, height::Int
+
+    # Retrieve current settings for the camera active region.
+    xsub      = Int(cam[DECIMATION_HORIZONTAL])
+    ysub      = Int(cam[DECIMATION_VERTICAL])
+    camxoff   = Int(cam[OFFSET_X])
+    camyoff   = Int(cam[OFFSET_Y])
+    camwidth  = Int(cam[WIDTH])
+    camheight = Int(cam[HEIGHT])
+
+    # Retrieve current settings for the frame grabber source region.
+    srcxoff   = Int(cam[PHX_ROI_SRC_XOFFSET])
+    srcyoff   = Int(cam[PHX_ROI_SRC_YOFFSET])
+    srcwidth  = Int(cam[PHX_ROI_XLENGTH])
+    srcheight = Int(cam[PHX_ROI_YLENGTH])
+
+    # Check settings and fix them.
+    clip = false
+    reset = false
+    if xsub != one(xsub)
+        cam[DECIMATION_HORIZONTAL] = (xsub = one(xsub))
+        quiet || warn("horizontal subsampling is not yet supported")
+    end
+    if ysub !=  one(ysub)
+        cam[DECIMATION_VERTICAL] = (ysub = one(ysub))
+        quiet || warn("vertical subsampling is not yet supported")
+    end
+    if (srcxoff ≥ camwidth  || srcxoff + srcwidth  < 1 ||
+        srcyoff ≥ camheight || srcyoff + srcheight < 1)
+        reset = true
+        srcxoff   = 0
+        srcyoff   = 0
+        srcwidth  = camwidth
+        srcheight = camheight
+    else
+        if srcxoff < 0
+            clip = true
+            srcwidth += srcxoff
+            srcxoff = 0
+        end
+        if srcxoff + srcwidth > camwidth
+            clip = true
+            srcwidth = camwidth - srcxoff
+        end
+        if srcyoff < 0
+            clip = true
+            srcheight += srcyoff
+            srcyoff = 0
+        end
+        if srcyoff + srcheight > camheight
+            clip = true
+            srcheight = camheight - srcyoff
+        end
+    end
+    if reset || clip
+        if ! quiet && reset
+            warn("non-overlapping source region has been reset to active region")
+        end
+        if ! quiet && clip
+            warn("source region has been clipped within active region")
+        end
+        updatesourceregion(cam, srcxoff, srcyoff, srcwidth, srcheight)
+    end
+
+    # Make sure the active region is correct and return the current ROI
+    # relative to the sensor.
+    updateactiveregion(cam, camwidth, camheight, xsub, ysub)
+    return (camxoff + srcxoff, camyoff + srcyoff, srcwidth, srcheight)
+end
+
+downround(a::Integer, b::Integer) = div(a, b)*b
+upround(a::Integer, b::Integer) = div((b - 1) + a, b)*b
+
+# Extend method.
 getfullwidth(cam::Camera{MikrotronMC408xModel}) =
     Int(cam[SENSOR_WIDTH])
 
+# Extend method.
 getfullheight(cam::Camera{MikrotronMC408xModel}) =
     Int(cam[SENSOR_HEIGHT])
+
+# Extend method.
+function supportedpixelformats(cam::Camera{MikrotronMC408xModel})
+    format = cam[PIXEL_FORMAT]
+    if format == PIXEL_FORMAT_MONO8 || format == PIXEL_FORMAT_MONO10
+        return Union{Monochrome{8},Monochrome{10}}
+    elseif format == PIXEL_FORMAT_BAYER8 || format == PIXEL_FORMAT_BAYER10
+        return Union{BayerFormat{8},BayerFormat{10}}
+    else
+        error("unexpected pixel format!")
+    end
+end
+
+# Extend method.
+function getpixelformat(cam::Camera{MikrotronMC408xModel})
+    format = cam[PIXEL_FORMAT]
+    (format == PIXEL_FORMAT_MONO8   ? Monochrome{8}   :
+     format == PIXEL_FORMAT_MONO10  ? Monochrome{10}  :
+     format == PIXEL_FORMAT_BAYER8  ? BayerFormat{8}  :
+     format == PIXEL_FORMAT_BAYER10 ? BayerFormat{10} :
+     error("unexpected pixel format!"))
+end
+
+# Extend method.
+function setpixelformat!(cam::Camera{MikrotronMC408xModel},
+                         ::Type{T}) where {T <: PixelFormat}
+    @assert cam.state == 1
+    format = cam[PIXEL_FORMAT]
+    dstfmt = cam[PHX_DST_FORMAT]
+    status = 2 # assume error
+    if isa(T, Monochrome)
+        if format != PIXEL_FORMAT_MONO8 && format != PIXEL_FORMAT_MONO10
+            throw(ArgumentError("not a monochrome camera"))
+        end
+    elseif T <: BayerFormat
+        if format != PIXEL_FORMAT_BAYER8 && format != PIXEL_FORMAT_BAYER10
+            throw(ArgumentError("not a color Bayer camera"))
+        end
+    end
+    if T == Monochrome{8}
+        if format != PIXEL_FORMAT_MONO8
+            cam[PIXEL_FORMAT] = PIXEL_FORMAT_MONO8
+        end
+        cam[PHX_DST_FORMAT] = PHX_DST_FORMAT_Y8
+    elseif T == Monochrome{10}
+        if format != PIXEL_FORMAT_MONO10
+            cam[PIXEL_FORMAT] = PIXEL_FORMAT_MONO10
+        end
+        cam[PHX_DST_FORMAT] = PHX_DST_FORMAT_Y10
+    elseif T <: BayerFormat{8}
+        if format != PIXEL_FORMAT_BAYER8
+            cam[PIXEL_FORMAT] = PIXEL_FORMAT_BAYER8
+        end
+        cam[PHX_DST_FORMAT] = PHX_DST_FORMAT_BAY8
+    elseif T <: BayerFormat{10}
+        if format != PIXEL_FORMAT_BAYER10
+            cam[PIXEL_FORMAT] = PIXEL_FORMAT_BAYER10
+        end
+        cam[PHX_DST_FORMAT] = PHX_DST_FORMAT_BAY10
+    else
+        throw(ArgumentError("unsupported pixel format"))
+    end
+    return T
+end
+
+# Extend method.
+getspeed(cam::Camera{MikrotronMC408xModel}) =
+    (convert(Float64, cam[ACQUISITION_FRAME_RATE]),
+     convert(Float64, cam[EXPOSURE_TIME]/1_000_000))
+
+# Extend method.
+function setspeed!(cam::Camera{MikrotronMC408xModel}, fps::Float64, exp::Float64)
+    checkspeed(fps, exp)
+    newfps = round(UInt32, fps)
+    newexp = round(UInt32, exp*1_000_000)
+    oldfps = cam[ACQUISITION_FRAME_RATE]
+    oldexp = cam[EXPOSURE_TIME]
+    if newfps < oldfps
+        cam[ACQUISITION_FRAME_RATE] = newfps
+    end
+    if newexp != oldexp
+        cam[EXPOSURE_TIME] = newexp
+    end
+    if newfps > oldfps
+        cam[ACQUISITION_FRAME_RATE] = newfps
+    end
+    nothing
+end
+
+# Extend method.
+getgain(cam::Camera{MikrotronMC408xModel}) =
+    convert(Float64, cam[GAIN]/100)
+
+# Extend method.
+setgain!(cam::Camera{MikrotronMC408xModel}, gain::Float64) =
+    setifneeded!(cam, GAIN, gain*100)
+
+# Extend method.
+getbias(cam::Camera{MikrotronMC408xModel}) =
+    convert(Float64, cam[BLACK_LEVEL]/100)
+
+# Extend method.
+setbias!(cam::Camera{MikrotronMC408xModel}, bias::Float64) =
+    setifneeded!(cam, BLACK_LEVEL, bias*100)
+
+# Extend method.
+getgamma(cam::Camera{MikrotronMC408xModel}) =
+    convert(Float64, cam[GAMMA])
+
+# Extend method.
+setgamma!(cam::Camera{MikrotronMC408xModel}, gamma::Float64) =
+    setifneeded!(cam, GAMMA, gamma)
+
+function setifneeded!(cam::Camera{MikrotronMC408xModel},
+                      reg::RegisterValue{T,ReadWrite},
+                      val) where {T<:Integer}
+    newval = round(T, val)
+    if cam[reg] != newval
+        cam[reg] != newval
+    end
+    nothing
+end
+
+function setifneeded!(cam::Camera{MikrotronMC408xModel},
+                      reg::RegisterValue{T,ReadWrite},
+                      val) where {T<:AbstractFloat}
+    newval = convert(T, val)
+    if cam[reg] != newval
+        cam[reg] != newval
+    end
+    nothing
+end
 
 # This overloading of the method is to treat specifically certain problematic
 # parameters such as the pixel format.
 function setparam!(cam::Camera{MikrotronMC408xModel},
                    reg::RegisterValue{T,A}, val) where {T,A<:Writable}
+    # Unfortunately, setting some parameters (as the pixel format or the gamma
+    # correction) returns an error with an absurd code
+    # (`PHX_ERROR_MALLOC_FAILED`) which, in practice can be ignored as, after a
+    # while, getting the actual setting yields the correct value.  A number of
+    # queries of the value are necessary (usually 2 are sufficient) before
+    # getting a confirmation of the setting.
+    #
+    # To cope with this issue, we set such parameters ignoring errors and
+    # repeatedly query the parameter until it succeeds or a maximum number of
+    # tries is exceeded.  To avoid alarming the user, printing of error
+    # messages is disabled during this process.
     errmode = printerror(false) # temporarily switch reporting of errors
     status = _setparam!(cam, reg, val)
-    if (status != PHX_OK && reg.addr == PIXEL_FORMAT.addr
-        && (val == PIXEL_FORMAT_MONO8 || val == PIXEL_FORMAT_MONO10 ||
-            val == PIXEL_FORMAT_BAYERGR8 || val == PIXEL_FORMAT_BAYERGR10))
-        # For some reasons, setting the pixel format returns an error (with
-        # code `PHX_ERROR_MALLOC_FAILED`) which, in practice can be ignored as,
-        # after a while, getting the pixel format yields the correct value.  A
-        # number of queries of the pixel format are necessary (usually, the
-        # first one yields an error, the second one yields a 0x07d0 pixel
-        # format which corresponds to nothing, the third one yields the correct
-        # value).
-        #
-        # To cope with this issue, we set pixel format ignoring errors and
-        # repeatedly query the pixel format until it succeeds.  To avoid
-        # alarming the user, printing of error messages is disabled during this
-        # process.
-        for i in 1:5
-            if _getparam(cam, reg) == (PHX_OK, val)
-                return nothing
+    if status != PHX_OK
+        retry = false
+        if reg.addr == PIXEL_FORMAT.addr && (val == PIXEL_FORMAT_MONO8     ||
+                                             val == PIXEL_FORMAT_MONO10    ||
+                                             val == PIXEL_FORMAT_BAYERGR8  ||
+                                             val == PIXEL_FORMAT_BAYERGR10 )
+            for i in 1:3
+                if _getparam(cam, reg) == (PHX_OK, val)
+                    return nothing
+                end
             end
+            printerror(errmode) # restore previous mode
+            error("failed to change pixel format to 0x", hex(val))
+        elseif reg.addr == GAMMA && (GAMMA_MIN ≤ gamma ≤ GAMMA_MAX)
+            for i in 1:3
+                status, curval = _getparam(cam, reg)
+                if status == PHX_OK && abs(curval - val) ≤ GAMMA_INCREMENT
+                    return nothing
+                end
+            end
+            printerror(errmode) # restore previous mode
+            error(@sprinf("failed to change gamma correction to %0.1f", val))
         end
-        printerror(errmode) # restore previous mode
-        error("failed to change pixel format to 0x", hex(val))
     end
     printerror(errmode) # restore previous mode
     _check(status)

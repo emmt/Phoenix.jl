@@ -13,17 +13,8 @@
 # Copyright (C) 2017, Éric Thiébaut.
 #
 
-"""
-
-    acquire(cam, [T, ] n=1) -> imgs
-
-yields a vector of `n` image(s) acquired by the camera `cam`.  Optional arguemnt `T`
-is the pixel type of the image(s).
-
-See also: [`start`](@ref).
-
-"""
-function acquire(cam::Camera, ::Type{T}, nbufs::Int) where {T}
+# Extend method.
+function read(cam::Camera, ::Type{T}, nbufs::Int) where {T}
     # Allocate image buffers and instruct the frame grabber to use them.
     nbufs ≥ 1 || throw(ArgumentError("invalid number of image buffers"))
     setbuffers!(cam, T, nbufs)
@@ -31,13 +22,10 @@ function acquire(cam::Camera, ::Type{T}, nbufs::Int) where {T}
     error("not yet implemented!")
 end
 
-acquire(cam::Camera, ::Type{T}, nbufs::Integer) where {T} =
-    acquire(cam, T, convert(Int, nbufs))
-
-function acquire(cam::Camera, nbufs::Integer = 1)
+function read(cam::Camera, nbufs::Int)
     T, format = best_capture_format(cam)
     cam[PHX_DST_FORMAT] = format
-    acquire(cam, T, nbufs)
+    read(cam, T, nbufs)
 end
 
 """
@@ -48,7 +36,7 @@ starts acquisition of images by the camera `cam`.  This method allocates `nbufs`
 image buffers of pixel type `T` for the acquisition and returns these buffers as a
 vector of 2D arrays of elemnt type `T`.
 
-Some methods can be used to retrieve infromation about the image buffers:
+Some methods can be used to retrieve information about the image buffers:
 - `lenght(cam)` yields the number of image buffers;
 - `eltype(cam)` yields the pixel type of the image buffers;
 - `cam[i]`, with `i` integer, yields the `i`-th image buffer (a 2D array);
@@ -56,16 +44,16 @@ Some methods can be used to retrieve infromation about the image buffers:
 See also: [`stop`](@ref).
 
 """
-Base.start(cam::Camera, ::Type{T}, nbufs::Integer) where {T} =
+start(cam::Camera, ::Type{T}, nbufs::Integer) where {T} =
     start(cam, T, convert(Int, nbufs))
 
-function Base.start(cam::Camera, nbufs::Integer) where {T} =
+function start(cam::Camera, nbufs::Integer)
     T, format = best_capture_format(cam)
     cam[PHX_DST_FORMAT] = format
     start(cam, T, nbufs)
 end
 
-function Base.start(cam::Camera, ::Type{T}, nbufs::Int = 2) where {T}
+function start(cam::Camera, ::Type{T}, nbufs::Int = 2) where {T}
     # Allocate image buffers and instruct the frame grabber to use them.
     nbufs ≥ 1 || throw(ArgumentError("invalid number of image buffers"))
     setbuffers!(cam, T, nbufs)
@@ -104,7 +92,8 @@ function setbuffers!(cam::Camera, nbufs::Integer = 1)
     setbuffers!(cam, T, nbufs)
 end
 
-# FIXME: benchmark this to see whether it is worth avoiding recreating the virtual buffers.
+# FIXME: Benchmark this to see whether it is worth avoiding recreating the
+#        virtual buffers.
 function setbuffers!(cam::Camera, ::Type{T}, nbufs::Int) where {T}
     if cam.state != 1
         if cam.state == 0
