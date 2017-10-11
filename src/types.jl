@@ -48,6 +48,35 @@ mutable struct Camera{M<:CameraModel} <: ScientificCamera
     end
 end
 
+"""
+
+`_destroy(cam)` is the finalizer method for a Phoenix camera instance.  It
+*must not* be called directly.
+
+See also: [`Phoenix.Camera`](@ref).
+
+"""
+function _destroy(cam::Camera)
+    if cam.handle != 0
+        if cam.state > 1
+            # Abort acquisition (using the private routine which does not throw
+            # exceptions).
+            _readstream(cam, PHX_ABORT, C_NULL)
+            _readstream(cam, PHX_UNLOCK, C_NULL)
+            _stophook(cam)
+        end
+        ref = Ref(cam.handle)
+        if cam.state > 0
+            # Close the camera.
+            ccall(_PHX_Close, Status, (Ptr{Handle},), ref)
+        end
+        # Release other ressources.
+        ccall(_PHX_Destroy, Status, (Ptr{Handle},), ref)
+        cam.handle = 0 # to avoid doing this more than once
+    end
+end
+
+
 # Custom exception to report errors.
 struct PHXError <: Exception
    status::Status
@@ -62,3 +91,4 @@ struct TimeSpec
     sec::_typeof_tv_sec    # seconds
     nsec::_typeof_tv_nsec  # nanoseconds
 end
+

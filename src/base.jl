@@ -168,12 +168,18 @@ setparam!(cam::Camera, param::Param{T,A}, val::Integer) where {T<:Integer,A<:Wri
 setparam!(cam::Camera, param::Param{String,A}, val::AbstractString) where {A<:Writable} =
     _check(_setparameter!(cam.handle, param.ident, Ref(pointer(cstring(val)))))
 
-setparam!(cam::Camera, param::Param) =
+setparam!(cam::Camera, param::Param, val) =
     error("unwritable parameter or undetermined parameter type")
 
 function setparam!(cam::Camera, param::Param{Ptr{T},A},
                    val::Union{Vector{T},Ptr{T},Ref{T}}) where {T,A<:Writable}
     _check(ccall(_PHX_ParameterSet, Status, (Handle, Cuint, Ptr{T}),
+                 cam.handle, param, val))
+end
+
+function setparam!(cam::Camera, param::Param{Ptr{Void},A},
+                   val::Union{Vector,Ptr,Ref}) where {A<:Writable}
+    _check(ccall(_PHX_ParameterSet, Status, (Handle, Cuint, Ptr{Void}),
                  cam.handle, param, val))
 end
 
@@ -204,7 +210,7 @@ end
 setparam!(cam::Camera, reg::RegisterAddress{T,A}, val) where {T,A<:Writable} =
     setparam!(cam, resolve(cam, reg), val)
 
-setparam!(cam::Camera, reg::Register, args...) =
+setparam!(cam::Camera, reg::Register, val) =
     error("attempt to set an unwritable CoaXPress parameter")
 
 
@@ -226,12 +232,16 @@ readstream(args...) = _check(_readstream(args...))
 # ============================================
 #
 
-const _callback_ptr = Ref{Ptr{Void}}(0)
 const _errorhandler_ptr = Ref{Ptr{Void}}(0)
+const _continuouscallback_ptr = Ref{Ptr{Void}}(0)
+const _sequentialcallback_ptr = Ref{Ptr{Void}}(0)
 function __init__()
     _errorhandler_ptr[] = cfunction(_errorhandler, Void,
                                     (Ptr{Cchar}, Status, Ptr{Cchar}))
-    _callback_ptr[] = C_NULL # FIXME: use real callback here
+    _continuouscallback_ptr[] = cfunction(_continuouscallback, Void,
+                                          (Handle, UInt32, Ptr{Void}))
+    _sequentialcallback_ptr[] = cfunction(_sequentialcallback, Void,
+                                          (Handle, UInt32, Ptr{Void}))
     const name = (is_linux() ? "LD_LIBRARY_PATH" :
                   is_apple() ? "DYLD_LIBRARY_PATH" : "")
     libdir = dirname(realpath(_PHXLIB))
@@ -540,31 +550,3 @@ performs the specified action.
 _action(cam::Camera, act::Action, prm::ActionParam, ptr::Ptr{Void}) =
     ccall(_PHX_Action, Status, (Handle, Action, ActionParam, Ptr{Void}),
           cam.handle, act, prm, ptr)
-
-"""
-
-`_destroy(cam)` is the finalizer method for a Phoenix camera instance.  It
-*must not* be called directly.
-
-See also: [`Phoenix.Camera`](@ref).
-
-"""
-function _destroy(cam::Camera)
-    if cam.handle != 0
-        if cam.state > 1
-            # Abort acquisition (using the private routine which does not throw
-            # exceptions).
-            _readstream(cam, PHX_ABORT, C_NULL)
-            _readstream(cam, PHX_UNLOCK, C_NULL)
-            _stophook(cam)
-        end
-        ref = Ref(cam.handle)
-        if cam.state > 0
-            # Close the camera.
-            ccall(_PHX_Close, Status, (Ptr{Handle},), ref)
-        end
-        # Release other ressources.
-        ccall(_PHX_Destroy, Status, (Ptr{Handle},), ref)
-        cam.handle = 0 # to avoid doing this more than once
-    end
-end
