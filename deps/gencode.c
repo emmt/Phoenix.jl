@@ -13,6 +13,7 @@
 
 #include <stdio.h>
 #include <stdint.h>
+#include <pthread.h>
 #include <phx_api.h>
 
 static void println(const char* str)
@@ -48,15 +49,61 @@ static void _define(const char* type, const char* name,
 
 #define alias_enum(nam, typ)  printf("const %s = Cint # %s\n", nam, #typ)
 
+/* Determine the offset of a field in a structure. */
+#define OFFSET_OF(type, field) ((char*)&((type*)0)->field - (char*)0)
+
+/* Determine whether an integer type is signed. */
+#define IS_SIGNED(type)        ((type)(~(type)0) < (type)0)
+
+/* Set all the bits of an L-value. */
+#define SET_ALL_BITS(lval) lval = 0; lval = ~lval
+
+/* Define a Julia constant. */
+#define DEF_CONST(name, format)  printf("const " #name format "\n", name)
+
+/* Define a Julia alias for a C integer, given an L-value of the corresponding
+ * type. */
+#define DEF_TYPEOF_LVALUE(name, lval)           \
+  do {                                          \
+    SET_ALL_BITS(lval);                         \
+    printf("const _typeof_%s = %sInt%u\n",      \
+           name, (lval < 0 ? "" : "U"),         \
+           (unsigned)(8*sizeof(lval)));         \
+                                                \
+  } while (0)
+
+/* Define a Julia alias for a C integer, given its type (`space` is used for
+ * alignment). */
+#define DEF_TYPEOF_TYPE(type, space)            \
+  do {                                          \
+    type lval;                                  \
+    SET_ALL_BITS(lval);                         \
+    printf("const _typeof_%s%s = %sInt%u\n",    \
+           #type, space, (lval < 0 ? "" : "U"), \
+           (unsigned)(8*sizeof(lval)));         \
+                                                \
+  } while (0)
+
+/* Define a Julia constant with the offset (in bytes) of a field of a
+ * C-structure. */
+#define DEF_OFFSETOF(ident, type, field)        \
+  printf("const _offsetof_" ident " = %3ld\n",  \
+         (long)OFFSET_OF(type, field))
+
+/* Define a Julia constant with the size of a given C-type. */
+#define DEF_SIZEOF_TYPE(name, type)             \
+  printf("const _sizeof_%s = %3lu\n",           \
+         name, (unsigned long)sizeof(type))
+
 int main()
 {
   int errors = 0;
 
-#define ASSERT(expr) do {                       \
-    if (! (expr)) {                             \
-      ++errors;                                 \
-      fprintf(stderr, "Assertion failed: %s\n", #expr);    \
-    }                                           \
+#define ASSERT(expr) do {                               \
+    if (! (expr)) {                                     \
+      ++errors;                                         \
+      fprintf(stderr, "Assertion failed: %s\n", #expr); \
+    }                                                   \
   } while (0)
   ASSERT (sizeof(ui8)  == sizeof(uint8_t));
   ASSERT (sizeof(ui16) == sizeof(uint16_t));
@@ -73,6 +120,38 @@ int main()
   newline();
   println("# Import methods for overloading them.");
   println("import Base: |, &, ~, $, convert");
+  newline();
+  println("# Size of mutexes and condition variables.");
+  printf( "const _sizeof_pthread_mutex_t = %d\n", (int)sizeof(pthread_mutex_t));
+  printf( "const _sizeof_pthread_cond_t  = %d\n", (int)sizeof(pthread_cond_t));
+  newline();
+  println("# Some standard C-types.");
+  {
+    time_t t;
+    struct timeval tv;
+    struct timespec ts;
+
+    SET_ALL_BITS(t);
+    SET_ALL_BITS(tv.tv_sec);
+    SET_ALL_BITS(tv.tv_usec);
+    SET_ALL_BITS(ts.tv_sec);
+    SET_ALL_BITS(ts.tv_nsec);
+
+    if (sizeof(tv.tv_sec) != sizeof(t) || (tv.tv_sec < 0) != (t < 0)) {
+      fprintf(stderr,
+              "Field `tv_sec` in `struct timeval` is not of type `time_t`\n");
+      exit(1);
+    }
+    if (sizeof(ts.tv_sec) != sizeof(t) || (ts.tv_sec < 0) != (t < 0)) {
+      fprintf(stderr,
+              "Field `tv_sec` in `struct timespec` is not of type `time_t`\n");
+      exit(1);
+    }
+    DEF_TYPEOF_LVALUE("time_t  ", t);
+    DEF_TYPEOF_LVALUE("tv_sec  ", tv.tv_sec);
+    DEF_TYPEOF_LVALUE("tv_usec ", tv.tv_usec);
+    DEF_TYPEOF_LVALUE("tv_nsec ", ts.tv_nsec);
+  }
   newline();
   println("# Types for PHX library arguments.");
   alias_uint("Handle", tHandle);

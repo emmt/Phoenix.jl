@@ -52,3 +52,13 @@ end
 struct PHXError <: Exception
    status::Status
 end
+
+struct TimeVal
+    sec::_typeof_tv_sec    # seconds
+    usec::_typeof_tv_usec  # microseconds
+end
+
+struct TimeSpec
+    sec::_typeof_tv_sec    # seconds
+    nsec::_typeof_tv_nsec  # nanoseconds
+end

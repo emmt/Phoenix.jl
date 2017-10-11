@@ -242,3 +242,110 @@ subsampling_parameter(sub::Integer) =
      sub == 4 ? PHX_ACQ_X4 :
      sub == 8 ? PHX_ACQ_X8 :
      error("unsupported horizontal subsampling ratio"))
+
+"""
+
+    gettimeofday()
+
+yields the current time since the epoch as a `TimeVal` structure.
+To convert it in seconds, just convert the result into a float:
+
+    float(gettimeofday())
+
+which yields the is the same as
+
+"""
+function gettimeofday()
+    tvref = Ref{TimeVal}()
+    status = ccall(:gettimeofday, Cint, (Ptr{TimeVal}, Ptr{Void}),
+                   tvref, C_NULL)
+    status == SUCCESS || error("gettimeofday failed")
+    return tvref[]
+end
+
+
+TimeVal(sec::Real) = TimeVal(convert(Float64, sec))
+TimeVal(sec::Integer) = TimeVal(sec, 0)
+TimeVal(tv::TimeVal) = tv
+function TimeVal(ts::TimeSpec)
+    µs, ns = divrem(ts.nsec, 1_000)
+    s, µs = divrem(µs + (ns ≥ 500 ? 1 : 0), 1_000_000)
+    return TimeVal(ts.sec + s, µs)
+end
+function TimeVal(sec::Float64)
+    if isfinite(sec)
+        s = trunc(Int, sec)
+        µs = round(Int, (sec - s)*1_000_000)
+        if µs ≥ 1_000_000
+            d, µs = divrem(µs, 1_000_000)
+            s += d
+        end
+        return TimeVal(s, µs)
+    elseif isinf(sec)
+        return TimeVal(sec == Inf ? typemax(_typeof_tv_sec) :
+                        typemin(_typeof_tv_sec), 0)
+    else
+        throw(DomainError())
+    end
+end
+#Base.convert(::Type{TimeVal}, x) = TimeVal(x)
+Base.float(tv::TimeVal) = (convert(Float64, tv.sec) +
+                           convert(Float64, tv.usec)*1E-6)
+
+"""
+
+    TimeSpec(s [, ns])
+
+yields a `TimeSpec` value for `s` seconds and `ns` nanoseconds.  If both `s`
+and `ns` are specified, they must be integres; otherwise, `s` can be a
+fractional number of seconds.  For instance:
+
+    TimeSpec(time() + 10.3)
+
+yields a `TimeSpec` instance for `10.3` seconds later.  Use the `float` method
+to convert a `TimeSpec` value in a floating-point value in seconds.
+
+"""
+TimeSpec(sec::Real) = TimeSpec(convert(Float64, sec))
+TimeSpec(sec::Integer) = TimeSpec(sec, 0)
+TimeSpec(tv::TimeVal) = TimeSpec(tv.sec, tv.usec*1_000)
+TimeSpec(ts::TimeSpec) = ts
+function TimeSpec(sec::Float64)
+    if isfinite(sec)
+        s = trunc(Int, sec)
+        ns = round(Int, (sec - s)*1_000_000_000)
+        if ns ≥ 1_000_000_000
+            d, ns = divrem(ns, 1_000_000_000)
+            s += d
+        end
+        return TimeSpec(s, ns)
+    elseif isinf(sec)
+        return TimeSpec(sec == Inf ? typemax(_typeof_tv_sec) :
+                        typemin(_typeof_tv_sec), 0)
+    else
+        throw(DomainError())
+    end
+end
+#Base.convert(::Type{TimeSpec}, x) = TimeSpec(x)
+Base.float(ts::TimeSpec) = (convert(Float64, ts.sec) +
+                            convert(Float64, ts.nsec)*1E-9)
+
+
+
+#function Base.(+)(ts::TimeSpec, tv::TimeVal)
+#    sec, nsec = divrem(ts.nsec + 1_000*tv.usec, 1_000_000_000)
+#    sec += ts.sec + tv.sec
+#    return TimeSpec(sec, nsec)
+#end
+#
+#Base.(+)(tv::TimeVal, ts::TimeSpec) = ts + tv
+
+"""
+    isforever(ts)
+
+yeilds whether the time specified `ts` should be consider as being forever,
+that is in a quasi-infinite future (due to the finite precision, this is
+more than 292.3 billions years).
+
+"""
+isforever(ts::TimeSpec) = (ts.sec ≥ typemax(_typeof_tv_sec))
