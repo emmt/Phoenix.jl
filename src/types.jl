@@ -47,12 +47,6 @@ callback and the main Julia thread.  It has the following fields:
 
 - `pending` is the number of image buffers ready for being processed;
 
-- `skip` is the number of initial image buffers to skip (*e.g.* to get rid of
-  *dirty* images);
-
-- `drop` indicates whether to get rid of the oldest image buffers when there
-  are more than one pending image buffers;
-
 See also: [`read`](@ref), [`start`](@ref), [`wait`](@ref).
 
 """
@@ -64,10 +58,8 @@ mutable struct AcquisitionContext
     overflows::Int   # number of overflows so far
     synclosts::Int   # number of synchronization losts so far
     pending::Int     # number of pending image buffers
-    skip::Int        # number of image buffers to skip
-    drop::Bool       # discard oldest image buffers
     function AcquisitionContext()
-        ctx = new(C_NULL, C_NULL, 0, 0, 0, 0, 0, 0, false)
+        ctx = new(C_NULL, C_NULL, 0, 0, 0, 0, 0)
         ctx.mutex = Libc.malloc(_sizeof_pthread_mutex_t)
         if ctx.mutex == C_NULL
             throw(OutOfMemoryError())
