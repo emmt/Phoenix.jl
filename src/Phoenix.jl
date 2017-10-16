@@ -55,6 +55,7 @@ export
 include("constants.jl")
 include("CoaXPress.jl")
 include("types.jl")
+#include("mutex.jl")
 include("base.jl")
 include("utils.jl")
 include("errors.jl")

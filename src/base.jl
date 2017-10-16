@@ -233,15 +233,11 @@ readstream(args...) = _check(_readstream(args...))
 #
 
 const _errorhandler_ptr = Ref{Ptr{Void}}(0)
-const _continuouscallback_ptr = Ref{Ptr{Void}}(0)
-const _sequentialcallback_ptr = Ref{Ptr{Void}}(0)
+const _callback_ptr = Ref{Ptr{Void}}(0)
 function __init__()
     _errorhandler_ptr[] = cfunction(_errorhandler, Void,
                                     (Ptr{Cchar}, Status, Ptr{Cchar}))
-    _continuouscallback_ptr[] = cfunction(_continuouscallback, Void,
-                                          (Handle, UInt32, Ptr{Void}))
-    _sequentialcallback_ptr[] = cfunction(_sequentialcallback, Void,
-                                          (Handle, UInt32, Ptr{Void}))
+    _callback_ptr[] = cfunction(_callback, Void, (Handle, UInt32, Ptr{Void}))
     const name = (is_linux() ? "LD_LIBRARY_PATH" :
                   is_apple() ? "DYLD_LIBRARY_PATH" : "")
     libdir = dirname(realpath(_PHXLIB))
@@ -397,7 +393,7 @@ See also: [`open`](@ref)
 _openhook(cam::Camera) = nothing
 
 """
-    close(cam) -> cam
+    close(cam)
 
 closes an Active Silicon board, releasing the hardware.  The camera is
 automatically closed when finalized by the garbage collector, so calling this
@@ -422,7 +418,7 @@ function Base.close(cam::Camera)
     else
         error("camera structure corrupted")
     end
-    return cam
+    return nothing
 end
 
 """
@@ -461,7 +457,7 @@ the command to be performed and `ptr` is a command-specific parameter (ususally
 a pointer).
 
 """
-_readstream(cam::Camera, cmd::Acq, ptr::Ptr{Void}) =
+_readstream(cam::Camera, cmd::Acq, ptr::Union{Ref,Ptr}) =
     ccall(_PHX_StreamRead, Status, (Handle, Acq, Ptr{Void}),
           cam.handle, cmd, ptr)
 

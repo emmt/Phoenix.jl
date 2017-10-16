@@ -13,6 +13,33 @@
 # Copyright (C) 2017, Éric Thiébaut.
 #
 
+"""
+    fieldoffset(x::DataType, s::Symbol)
+
+yields the byte offset of field `s` in structure `x`.  Beware that this is
+slower than requested the offset by index.
+
+"""
+Base.fieldoffset(::Type{T}, s::Symbol) where {T} =
+    fieldoffset(T, fieldindex(T, s))
+
+"""
+    fieldindex(x::DataType, s::Symbol)
+
+yields the index of field `s` in structure `x`.
+
+See also: [`nfields`](@ref), [`fieldname`](@ref), [`fieldoffset`](@ref).
+
+"""
+function fieldindex(::Type{T}, s::Symbol) where {T}
+    for i in 1:nfields(T)
+        if fieldname(T, i) == s
+            return i
+        end
+    end
+    throw(ArgumentError("type `$T` has no field `$s`"))
+end
+
 const _DST_FORMATS = Dict(PHX_DST_FORMAT_Y8   => Monochrome{8},
                           PHX_DST_FORMAT_Y10  => Monochrome{10},
                           PHX_DST_FORMAT_Y12  => Monochrome{12},
@@ -55,7 +82,8 @@ See also: [`best_capture_format`](@ref).
 
 """
 capture_format_bits(format::Integer) :: Int =
-    bitsperpixel(get(_DST_FORMATS, format, -1))
+    (haskey(_DST_FORMATS, format) ?
+     bitsperpixel(getindex(_DST_FORMATS, format)) : -1)
 
 """
 

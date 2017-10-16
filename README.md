@@ -16,11 +16,12 @@ some frames is:
 
     using Phoenix
     cam = open(Phoenix.MikrotronMC408xModel)
-    cfg = getconfiguration(cam)
+    cfg = getconfig!(cam)
     cfg.roi_x = ...
     cfg.roi_y = ...
     ...
-    setconfiguration!(cam, cfg)
+    fixconfig!(cfg, maxsize(cam); shrink=true)
+    setconfig!(cam, cfg)
     bufs = start(cam, UInt16, 4)
     while true
         # Wait for next frame.
@@ -55,9 +56,11 @@ retrieves the actual configuration of the camera as `cfg` (an instance of
     cfg.roi_x = ...
     cfg.roi_y = ...
     ...
+    fixconfig!(cfg, maxsize(cam); shrink=true)
     setconfiguration!(cam, cfg)
 
-modifies the parameters and set the configuration to use with the camera;
+modifies the parameters, fix any (size) inconsistencies and set the
+configuration to use with the camera;
 
     bufs = start(cam, UInt16, 4)
 

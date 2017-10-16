@@ -1,5 +1,5 @@
 #
-# acquistion.jl -
+# acquisition.jl -
 #
 # Implements acquistion of images for Julia interface to ActiveSilicon Phoenix
 # (PHX) library.
@@ -13,76 +13,314 @@
 # Copyright (C) 2017, Éric Thiébaut.
 #
 
-# Extend method.
-function read(cam::Camera, ::Type{T}, nbufs::Int) where {T}
-    # Allocate image buffers and instruct the frame grabber to use them.
-    nbufs ≥ 1 || throw(ArgumentError("invalid number of image buffers"))
-    setbuffers!(cam, T, nbufs)
+const SUCCESS = Cint(0)
+const FAILURE = Cint(-1)
+const ETIMEDOUT = Libc.ETIMEDOUT
 
-    error("not yet implemented!")
-end
+const _offsetof_context_mutex     = fieldoffset(AcquisitionContext, :mutex)
+const _offsetof_context_cond      = fieldoffset(AcquisitionContext, :cond)
+const _offsetof_context_events    = fieldoffset(AcquisitionContext, :events)
+const _offsetof_context_number    = fieldoffset(AcquisitionContext, :number)
+const _offsetof_context_overflows = fieldoffset(AcquisitionContext, :overflows)
+const _offsetof_context_synclosts = fieldoffset(AcquisitionContext, :synclosts)
+const _offsetof_context_pending   = fieldoffset(AcquisitionContext, :pending)
 
-function read(cam::Camera, nbufs::Int)
-    T, format = best_capture_format(cam)
-    cam[PHX_DST_FORMAT] = format
-    read(cam, T, nbufs)
+# similar to unsafe_load but re-cast pointer as needed.
+@inline _load(::Type{T}, ptr::Ptr) where {T} =
+    unsafe_load(Ptr{T}(ptr))
+
+@inline _load(::Type{T}, ptr::Ptr{T}) where {T} =
+    unsafe_load(ptr)
+
+# similar to unsafe_store! but re-cast pointer as needed.
+@inline _store!(::Type{T}, ptr::Ptr, val) where {T} =
+    unsafe_store!(Ptr{T}(ptr), val)
+
+@inline _store!(::Type{T}, ptr::Ptr{T}, val) where {T} =
+    unsafe_store!(ptr, val)
+
+@inline _increment!(::Type{T}, ptr::Ptr) where {T} =
+    _increment!(T, Ptr{T}(ptr))
+
+@inline _increment!(::Type{T}, ptr::Ptr{T}) where {T} =
+    unsafe_store!(ptr, unsafe_load(ptr) + one(T))
+
+@inline _decrement!(::Type{T}, ptr::Ptr) where {T} =
+    _decrement!(T, Ptr{T}(ptr))
+
+@inline _decrement!(::Type{T}, ptr::Ptr{T}) where {T} =
+    unsafe_store!(ptr, unsafe_load(ptr) - one(T))
+
+
+"""
+Callback for acquisition.
+
+This method does not use any Julia internals as you can figure out by
+calling:
+
+    code_native(Phoenix._callback, (Phoenix.Handle, UInt32, Ptr{Void}))
+
+This callback is therefore thread safe.
+
+"""
+function _callback(handle::Handle, events::UInt32, ctx::Ptr{Void})
+    #ccall(:printf, Cint, (Cstring, Cuint, Ptr{Void}),
+    #      "_callback called events=0x%0x, ctx=0x%p\n", events, ctx)
+    mutex = _load(Ptr{Void}, ctx + _offsetof_context_mutex)
+    cond  = _load(Ptr{Void}, ctx + _offsetof_context_cond)
+    if ccall(:pthread_mutex_lock, Cint, (Ptr{Void},), mutex) == SUCCESS
+        if (PHX_INTRPT_BUFFER_READY & events) != 0
+            # A new frame is available.
+            _increment!(Int, ctx + _offsetof_context_number)
+            _increment!(Int, ctx + _offsetof_context_pending)
+        end
+        if (PHX_INTRPT_FIFO_OVERFLOW & events) != 0
+            # Fifo overflow.
+            _increment!(Int, ctx + _offsetof_context_number)
+            _increment!(Int, ctx + _offsetof_context_overflows)
+        end
+        if (PHX_INTRPT_SYNC_LOST & events) != 0
+            # Synchronization lost.
+            _increment!(Int, ctx + _offsetof_context_number)
+            _increment!(Int, ctx + _offsetof_context_synclosts)
+        end
+        if (_load(UInt, ctx + _offsetof_context_events) & events) != 0
+            # Signal condition for waiting thread.
+            ccall(:pthread_cond_signal, Cint, (Ptr{Void},), cond)
+        end
+        ccall(:pthread_mutex_unlock, Cint, (Ptr{Void},), mutex)
+    end
+    return nothing
 end
 
 """
+    _wait(ctx, timeout = TimeSpec(Inf)) -> index, ident, code
 
-    start(cam, T, nbufs=1) -> bufs
+waits for next signaled acquisition event but no longer than the epoch
+specified by `timeout`.  Argument `ctx` specify the acquisition context shared
+with the frame grabber thread.  A tuple of 3 values is returned:
 
-starts acquisition of images by the camera `cam`.  This method allocates `nbufs`
-image buffers of pixel type `T` for the acquisition and returns these buffers as a
-vector of 2D arrays of elemnt type `T`.
+* `index` is the index of the next image buffer to process, 0 if there are
+  none, -1 if there have been some errors;
 
-Some methods can be used to retrieve information about the image buffers:
-- `lenght(cam)` yields the number of image buffers;
-- `eltype(cam)` yields the pixel type of the image buffers;
-- `cam[i]`, with `i` integer, yields the `i`-th image buffer (a 2D array);
+* `ident` is the identifier of the origin of the failure to return a new image
+  buffer to process;
 
-See also: [`stop`](@ref).
+* `code` is the associated error code (may be: a Phoenix status or a POSIX
+  thread error code);
 
 """
-start(cam::Camera, ::Type{T}, nbufs::Integer) where {T} =
-    start(cam, T, convert(Int, nbufs))
+function _wait(cam::Camera, timeout::TimeSpec = TimeSpec(Inf))
+    local errname::Symbol = Symbol()
+    local errcode::Int    = 0
+    imgbuf = Ref{ImageBuff}()
+    local index::Int = 0 # index of frame to process if any
+    ctx = cam.context # shortcut
 
-function start(cam::Camera, nbufs::Integer)
-    T, format = best_capture_format(cam)
-    cam[PHX_DST_FORMAT] = format
-    start(cam, T, nbufs)
+    # Beware to not throw anything while the mutex is locked!
+    code = ccall(:pthread_mutex_lock, Cint, (Ptr{Void},), ctx.mutex)
+    if code != SUCCESS
+        index, errname, errcode = -1, :lock, Int(code)
+    else
+        # While there are no pending frames, wait for the condition to be
+        # signaled or an error to occur.  This is done in a `while` loop to
+        # cope with spurious signaled conditions.
+        while ctx.pending == 0
+            # This code is prepared to face spurious signaled conditions.
+            if isforever(timeout)
+                code = ccall(:pthread_cond_wait, Cint, (Ptr{Void}, Ptr{Void}),
+                             ctx.cond, ctx.mutex)
+                if code != SUCCESS
+                    index, errname, errcode = -1, :wait, Int(code)
+                    break
+                end
+            else
+                code = ccall(:pthread_cond_timedwait, Cint,
+                             (Ptr{Void}, Ptr{Void}, Ptr{TimeSpec}),
+                             ctx.cond, ctx.mutex, Ref(timeout))
+                if code != SUCCESS
+                    index, errname, errcode = -1, :timedwait, Int(code)
+                    break
+                end
+            end
+        end
+        if index ≥ 0 && ctx.drop
+            # If no errors occured so far, get rid of unprocessed pending image
+            # buffers.
+            while ctx.pending > 1
+                if false # FIXME: It seems unnecessary to get a buffer before
+                         #        releasing it.
+                    status = _readstream(cam, PHX_BUFFER_GET, imgbuf)
+                    if status != PHX_OK
+                        index, errname, errcode = -1, :getbuffer, Int(status)
+                        break
+                    end
+                end
+                status = _readstream(cam, PHX_BUFFER_RELEASE, C_NULL)
+                if status != PHX_OK
+                    index, errname, errcode = -1, :releasebuffer, Int(status)
+                    break
+                end
+                ctx.pending -= 1
+                ctx.overflows += 1
+            end
+        end
+        if index ≥ 0 && ctx.pending ≥ 1
+            # If no errors occured so far and at least one image buffer is
+            # unprocessed, manage to return the index of this buffer.
+            status = _readstream(cam, PHX_BUFFER_GET, imgbuf)
+            if status != PHX_OK
+                index, errname, errcode = -1, :getbuffer, Int(status)
+            else
+                index = Int(imgbuf[].pvContext)
+                ctx.pending -= 1 # FIXME: perhaps put this in the `release`
+                                 #        method
+            end
+        end
+        # Unlock the mutex (whatever the errors so far).
+        code = ccall(:pthread_mutex_unlock, Cint, (Ptr{Void},), ctx.mutex)
+        if code != SUCCESS && index ≥ 0
+            index, errname, errcode = -1, :unlock, Int(code)
+        end
+    end
+    return index, errname, errcode
 end
 
-function start(cam::Camera, ::Type{T}, nbufs::Int = 2) where {T}
-    # Allocate image buffers and instruct the frame grabber to use them.
-    nbufs ≥ 1 || throw(ArgumentError("invalid number of image buffers"))
-    setbuffers!(cam, T, nbufs)
+
+# FIXME: Something not specified in the doc. is that, when continuous
+# acquisition and blocking mode are both enabled, all calls to `PHX_BUFFER_GET`
+# yield the same image buffer until `PHX_BUFFER_RELEASE` is called.  It seems
+# that there is no needs to have a `PHX_BUFFER_GET` matches a
+# `PHX_BUFFER_RELEASE` and that every `PHX_BUFFER_RELEASE` moves to the next
+# buffer.  However, acquisition buffers are used in their given order so it is
+# not too difficult to figure out where we are if we count the number of
+# frames.
+#
+
+# FIXME: if skip > 0, start at a given index (PHX_ACQ_BUFFER_START) and read
+#        `num + skip` images (PHX_ACQ_NUM_IMAGES/PHX_ACQ_NUM_BUFFERS) into
+#        `num` buffers with PHX_ACQ_BLOCKING and PHX_ACQ_CONTINUOUS both set to
+#        PHX_DISABLE
+function _read(cam::Camera, ::Type{T}, num::Int, skip::Int) where {T}
+    # Check arguments.
+    num ≥ 1 || throw(ArgumentError("invalid number of images"))
+    skip ≥ 0 || throw(ArgumentError("invalid number of images to skip"))
+
+    # Configure frame grabber for continuous acquisition of `num` images.  Note
+    # that `PHX_INTRPT_CAPTURE_COMPLETE` event is only generated if
+    # `PHX_ACQ_CONTINUOUS` is disabled so we will take care ourself of counting
+    # the number of images.
+    cam[PHX_ACQ_CONTINUOUS]   = PHX_ENABLE
+    cam[PHX_ACQ_BLOCKING]     = PHX_ENABLE
+    # FIXME: this fail: cam[PHX_ACQ_BUFFER_START] = 1 + mod(-skip, num)
 
     # Enable interrupts for expected events and setup callback context.
     cam[PHX_INTRPT_CLR]    = ~zero(ParamValue)
-    cam[PHX_INTRPT_SET]    = (PHX_INTRPT_GLOBAL_ENABLE|
-                              PHX_INTRPT_FIFO_OVERFLOW|
+    cam[PHX_INTRPT_SET]    = (PHX_INTRPT_GLOBAL_ENABLE |
+                              PHX_INTRPT_FIFO_OVERFLOW |
+                              PHX_INTRPT_SYNC_LOST |
                               PHX_INTRPT_BUFFER_READY)
-    cam[PHX_EVENT_CONTEXT] = C_NULL # cam.context.handle
 
-    # Start acquisition with given callback.
-    readstream(cam, PHX_START, _callback_ptr[])
+    # Configure acquisition context.
+    cam.context.events    = PHX_INTRPT_BUFFER_READY;
+    cam.context.number    = 0
+    cam.context.overflows = 0
+    cam.context.synclosts = 0
+    cam.context.drop      = false
+    cam[PHX_EVENT_CONTEXT] = Ref(cam.context)
 
-    # Send specific start command, aborting acquisition in case of errors.
-    try
-        _starthook(cam)
-    catch err
-        readstream(cam, PHX_ABORT, _callback_ptr[])
-        readstream(cam, PHX_UNLOCK, C_NULL)
-        rethrow(err)
+    # Allocate image buffers and instruct the frame grabber to use them.
+    setbuffers!(cam, T, num)
+
+    # Timeout is 1 second plus the maximum time needed to acquire all images
+    # plus 1 percent allowed drift.
+    fps, exposure = getspeed(cam)
+    timeout = TimeSpec(time() + 1.0 + 1.01*((num + skip)/fps + exposure))
+
+    # Start acquisition with given callback and collect images.
+    perms = Array{Int}(num)
+    count = 0
+    local ident, code
+    _start(cam)
+    while count < num
+        index, ident, code = _wait(cam, timeout)
+        println("index: $index")
+        if index < 0
+            # some error occured
+            break
+        elseif index > 0
+            if skip > 0
+                skip -= 1
+            else
+                count += 1
+                perms[count] = index
+                if count ≥ num
+                    break
+                end
+            end
+            readstream(cam, PHX_BUFFER_RELEASE, C_NULL)
+        end
     end
 
-    # Update state and return the acquisition buffers.
-    cam.state = 2
-    return cam.bufs
+    # Stop acquisition immediately.
+    abort(cam)
 
+    # Deal with errors.
+    if count < num
+        if ident == :timedwait && code == Libc.ETIMEDOUT
+            warn("Timeout occured during acquisition!")
+            resize!(perms, count)
+        else
+            error("failure while waiting for image(s) [$ident, $code]")
+        end
+    end
+
+    # Return re-ordered images.
+    return [cam.imgs[perms[i]] for i in 1:count]
 end
 
+
+function read(cam::Camera, ::Type{T}, num::Int; skip::Integer = 0) where {T}
+    _read(cam, T, num, convert(Int, skip))
+end
+
+function read(cam::Camera, num::Int; kwds...)
+    T, format = best_capture_format(cam)
+    cam[PHX_DST_FORMAT] = format
+    read(cam, T, num; kwds...)
+end
+
+"""
+    setbuffers!(cam, ...)
+
+allocates image buffers for acquisition with camera `cam`.
+
+On entry, it is assumed that the frame grabber configuration is consistent with
+the camera settings.  In particular:
+
+* The size of the region of interest (ROI) to capture is given by parameters
+  `PHX_ROI_XLENGTH` and `PHX_ROI_YLENGTH`.
+
+* The pixel format of the captured image is given by the parameter
+  `PHX_DST_FORMAT`.
+
+On exit, `nbufs` image buffers of type `T` are allocated and referenced by
+`cam`, their size as small as possible but sufficient to store the captured
+ROI and the following parameters are updated accordingly:
+
+* `PHX_ROI_DST_XOFFSET` and `PHX_ROI_DST_YOFFSET` are both set to 0.
+
+* `PHX_BUF_DST_XLENGTH` is set to the number of bytes per row of the ROI and
+  `PHX_BUF_DST_YLENGTH` is set to the number of rows in the ROI.
+
+* `PHX_ACQ_IMAGES_PER_BUFFER`, `PHX_ACQ_BUFFER_START` and
+  `PHX_COUNT_BUFFER_READY` are all set to `1`.
+
+* `PHX_ACQ_NUM_BUFFERS` (alias `PHX_ACQ_NUM_IMAGES`) is set to `nbufs` while
+  `PHX_DST_PTRS_VIRT` and `PHX_DST_PTR_TYPE` are set to require the frame
+  grabber to use the provided image buffers.
+
+"""
 setbuffers!(cam::Camera, ::Type{T}, nbufs::Integer) where {T} =
     setbuffers!(cam, T, convert(Int, nbufs))
 
@@ -117,38 +355,123 @@ function setbuffers!(cam::Camera, ::Type{T}, nbufs::Int) where {T}
         end
         arrbits = sizeof(T)*8
         if arrbits != dstbits
-            warn("Capture format does not exactly fit in chosen pixel type")
+            warn("capture format does not exactly fit in chosen pixel type")
         end
         width = div(width*dstbits + arrbits - 1, arrbits) # roundup array width
         cam[PHX_ROI_DST_XOFFSET] = 0
         cam[PHX_ROI_DST_YOFFSET] = 0
         cam[PHX_BUF_DST_XLENGTH] = width*sizeof(T)
         cam[PHX_BUF_DST_YLENGTH] = height
+        imgs = [zeros(T, width, height) for i in 1:nbufs]
     elseif nbufs == 0
         width = 0
         height = 0
+        imgs = Vector{Array{T,2}}(0)
     else
         throw(ArgumentError("invalid number of image buffers"))
     end
-    bufs = [zeros(T, width, height) for i in 1:nbufs]
-    vbufs = [i ≤ nbufs ?
-             ImageBuff(pointer(bufs[i]), Ptr{Void}(i)) :
-             ImageBuff(C_NULL, C_NULL) for i in 1:nbufs+1]
+    bufs = [i ≤ nbufs ?
+            ImageBuff(pointer(imgs[i]), Ptr{Void}(i)) :
+            ImageBuff(C_NULL, C_NULL) for i in 1:nbufs+1]
+
+    # Common acquisition settings.
+    cam[PHX_ACQ_IMAGES_PER_BUFFER] = 1
+    cam[PHX_ACQ_BUFFER_START]      = 1
+    cam[PHX_COUNT_BUFFER_READY]    = 1
 
     # Instruct Phoenix to use the virtual buffers. The PHX_CACHE_FLUSH here is
     # to make sure that the new buffers do replace the old ones, if any, before
     # they may be claimed by the garbage collector.  (FIXME: I am not sure
-    # whetherv this is really needed and I do not known the effects of the
-    # PHX_FORCE_REWRITE flag.)
+    # whether this is really needed and I do not known the effects of the
+    # `PHX_FORCE_REWRITE` flag.)
     cam[PHX_ACQ_NUM_BUFFERS] = nbufs
-    cam[PHX_DST_PTRS_VIRT]   = vbufs
+    cam[PHX_DST_PTRS_VIRT]   = bufs
     cam[(PHX_DST_PTR_TYPE|PHX_CACHE_FLUSH|
          PHX_FORCE_REWRITE)] = PHX_DST_PTR_USER_VIRT
 
     # Store image buffers in camera instance to prevent claim by garbage collector.
-    cam.bufs = bufs
-    cam.vbufs = vbufs # (FIXME: not sure this is needed if the above has immediate effects)
+    cam.imgs = imgs
+    cam.bufs = bufs # FIXME: Not sure this is needed if the above has immediate
+                    #        effects.  We can check this by not setting this
+                    #        reference, call the garbage collector and attempt
+                    #        acquisition, the result should be quite obvious...
     return cam
+end
+
+"""
+
+    start(cam, T, nbufs=1) -> imgs
+
+starts acquisition of images by the camera `cam`.  This method allocates `nbufs`
+image buffers of pixel type `T` for the acquisition and returns these buffers as a
+vector of 2D arrays of elemnt type `T`.
+
+Some methods can be used to retrieve information about the image buffers:
+- `lenght(cam)` yields the number of image buffers;
+- `eltype(cam)` yields the pixel type of the image buffers;
+- `cam[i]`, with `i` integer, yields the `i`-th image buffer (a 2D array);
+
+See also: [`stop`](@ref).
+
+"""
+start(cam::Camera, ::Type{T}, nbufs::Integer) where {T} =
+    start(cam, T, convert(Int, nbufs))
+
+function start(cam::Camera, nbufs::Integer)
+    T, format = best_capture_format(cam)
+    cam[PHX_DST_FORMAT] = format
+    start(cam, T, nbufs)
+end
+
+function start(cam::Camera, ::Type{T}, nbufs::Int = 2;
+               drop::Bool = false) where {T}
+    # Allocate image buffers and instruct the frame grabber to use them.
+    nbufs ≥ 1 || throw(ArgumentError("invalid number of image buffers"))
+    setbuffers!(cam, T, nbufs)
+
+    # Configure frame grabber for continuous acquisition.
+    cam[PHX_ACQ_BLOCKING]   = PHX_ENABLE
+    cam[PHX_ACQ_CONTINUOUS] = PHX_ENABLE
+    cam[PHX_ACQ_NUM_IMAGES] = typemax(Cint)
+
+    # Enable interrupts for expected events and setup callback context.
+    cam[PHX_INTRPT_CLR]    = ~zero(ParamValue)
+    cam[PHX_INTRPT_SET]    = (PHX_INTRPT_GLOBAL_ENABLE|
+                              PHX_INTRPT_BUFFER_READY|
+                              PHX_INTRPT_FIFO_OVERFLOW|
+                              PHX_INTRPT_SYNC_LOST)
+    cam[PHX_EVENT_CONTEXT] = C_NULL # cam.context.handle
+
+    # Configure acquisition context.
+    cam.context.events    = (PHX_INTRPT_BUFFER_READY|
+                             PHX_INTRPT_FIFO_OVERFLOW|
+                             PHX_INTRPT_SYNC_LOST);
+    cam.context.number    = 0
+    cam.context.overflows = 0
+    cam.context.synclosts = 0
+    cam.context.skip      = 0
+    cam.context.drop      = drop
+    cam[PHX_EVENT_CONTEXT] = Ref(cam.context)
+
+    # Start acquisition and return the acquisition buffers.
+    _start(cam)
+    return cam.imgs
+end
+
+function _start(cam)
+    # Start acquisition with our own callback.
+    readstream(cam, PHX_START, _callback_ptr[])
+
+    # Send specific start command, aborting acquisition in case of errors.
+    try
+        _starthook(cam)
+    catch err
+        _readstream(cam, PHX_ABORT, C_NULL)
+        _readstream(cam, PHX_UNLOCK, C_NULL)
+        rethrow(err)
+    end
+    cam.state = 2
+    nothing
 end
 
 """
@@ -176,16 +499,28 @@ function stop(cam::Camera, cmd::Acq = PHX_STOP)
     elseif cam.state == 1
         warn("no acquisition is running")
     elseif cam.state == 2
-        # Stop/abort acquistion, unlock all buffers and call specific
-        # stop command.
-        readstream(cam, cmd, C_NULL)
-        try
-            readstream(cam, PHX_UNLOCK, C_NULL)
-        catch err
-            warn(string(err))
+        # Stop/abort acquisition.
+        status = _readstream(cam, cmd, C_NULL)
+        if status != PHX_OK
+            warn("Failure in ", :PHX_StreamRead, " with ",
+                 (cmd == PHX_STOP  ? :PHX_STOP :
+                  cmd == PHX_ABORT ? :PHX_ABORT : cmd),
+                 " :\n         ", geterrormessage(status))
         end
-        _stophook(cam)
-        cam.state = 1
+        # Unlock all buffers.
+        status = _readstream(cam, PHX_UNLOCK, C_NULL)
+        if status != PHX_OK && status != PHX_ERROR_NOT_IMPLEMENTED
+            warn("Failure in ", :PHX_StreamRead, " with ", :PHX_UNLOCK,
+                 ":\n         ", geterrormessage(status))
+        end
+        # Call specific stop command.
+        try
+            _stophook(cam)
+        catch err
+            rethrow(err)
+        finally
+            cam.state = 1
+        end
     else
         error("camera instance corrupted")
     end
@@ -213,11 +548,3 @@ See also: [`stop`](@ref), [`_starthook`](@ref).
 """
 _stophook(::Camera) = nothing
 
-#function waitframe(cam::Camera)
-#    @assert(cam.running, "acquistion must be running")
-#    _check(ccall(_phx_wait_frame, Status,
-#                 (Ptr{Void}, Ptr{Void}), cam.handle, cam.frame))
-#    return frame.context, frame.number, frame.overflows
-#end
-
-releaseframe(cam::Camera) = readstream(cam, PHX_BUFFER_RELEASE, C_NULL)

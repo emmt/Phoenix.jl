@@ -23,7 +23,8 @@ using Phoenix
 import Phoenix: Camera, CameraModel,
     Readable, Writable, ReadOnly, ReadWrite, WriteOnly, Unreachable,
     RegisterValue, RegisterString, RegisterCommand,
-    RegisterEnum, RegisterAddress,
+    RegisterEnum, RegisterAddress, ParamValue,
+    capture_format_bits,
     assert_coaxpress,
     is_coaxpress,
     printerror,
@@ -59,7 +60,7 @@ const EXPOSURE_MODE                 = RegisterEnum{ReadWrite}(0x8944)
 const EXPOSURE_TIME                 = RegisterValue{UInt32,ReadWrite}(0x8840)
 const EXPOSURE_TIME_MAX             = RegisterValue{UInt32,ReadOnly}(0x8818)
 const ACQUISITION_FRAME_RATE        = RegisterValue{UInt32,ReadWrite}(0x8814)
-# const ACQUISITION_FRAME_RATE_MIN = 16 # FIXME: seems to be 2?
+const ACQUISITION_FRAME_RATE_MIN    = 10 # FIXME: the XML file says 16
 const ACQUISITION_FRAME_RATE_MAX    = RegisterValue{UInt32,ReadOnly}(0x881C)
 const SEQUENCER_CONFIGURATION_MODE  = RegisterValue{UInt32,Unreachable}(0x8874)
 const SEQUENCER_MODE                = RegisterValue{UInt32,Unreachable}(0x8870)
@@ -167,34 +168,32 @@ function _openhook(cam::Camera{MikrotronMC408xModel})
         error("bad device vendor name (got \"$vendorname\", expecting \"Mikrotron GmbH\")")
     end
     modelname = cam[CXP_DEVICE_MODEL_NAME]
-    if modelname != "MC4086"
-        error("bad device model name (got \"$modelname\", expecting \"MC4086\")")
+    if length(modelname) != 6 || modelname[1:5] != "MC408" ||
+        (modelname[6] != '2' && modelname[6] != '3' &&
+         modelname[6] != '6' && modelname[6] != '7')
+        error("bad device model name (got \"$modelname\", expecting \"MC408[2367]\")")
     end
 
     # Get size of current ROI and pixel format.
     width  = cam[WIDTH]
     height = cam[HEIGHT]
-    depth = getdepth(cam)
 
     # FIXME: We do not support subsampling yet.
     xsub = Int(cam[DECIMATION_HORIZONTAL])
-    if xsub != 1
+    if xsub != one(xsub)
         warn("horizontal subsampling is not yet supported")
-        xsub = 1
-        cam[DECIMATION_HORIZONTAL] = xsub
+        cam[DECIMATION_HORIZONTAL] = (xsub = one(xsub))
     end
     ysub = Int(cam[DECIMATION_VERTICAL])
-    if ysub != 1
+    if ysub != one(ysub)
         warn("vertical subsampling is not yet supported")
-        ysub = 1
-        cam[DECIMATION_VERTICAL] = ysub
+        cam[DECIMATION_VERTICAL] =  (ysub = one(ysub))
     end
 
     # The following settings are the same as the contents of the configuration
     # file "Mikrotron_MC4080_CXP.pcf".
     cam[PHX_BOARD_VARIANT]      = PHX_DIGITAL
     cam[PHX_CAM_TYPE]           = PHX_CAM_AREASCAN_ROI
-    cam[PHX_DATASTREAM_VALID]   = PHX_DATASTREAM_ALWAYS
     cam[PHX_CAM_FORMAT]         = PHX_CAM_NON_INTERLACED
     cam[PHX_CAM_CLOCK_POLARITY] = PHX_CAM_CLOCK_POS
     cam[PHX_CAM_SRC_COL]        = PHX_CAM_SRC_MONO
@@ -214,7 +213,7 @@ function _openhook(cam::Camera{MikrotronMC408xModel})
     cam[PHX_COMMS_FLOW]         = PHX_COMMS_FLOW_NONE
 
     # Set the format of the image sent by the camera.
-    cam[PHX_CAM_SRC_DEPTH] = depth
+    dstformat = updatepixelformat(cam)
     updateactiveregion(cam, width, height, xsub, ysub)
 
     # Acquisition settings.
@@ -237,13 +236,12 @@ function _openhook(cam::Camera{MikrotronMC408xModel})
     # rounded up to a number of bytes), the value of `PHX_BUF_DST_YLENGTH` is
     # the number of lines in the destination buffer (it must be larger or equal
     # `PHX_ROI_DST_YOFFSET` plus `PHX_ROI_YLENGTH`.
+    bits = capture_format_bits(dstformat)
     cam[PHX_ROI_DST_XOFFSET] = 0
     cam[PHX_ROI_DST_YOFFSET] = 0
-    cam[PHX_BUF_DST_XLENGTH] = (depth ≤ 8 ? width : 2*width)
+    cam[PHX_BUF_DST_XLENGTH] = div(width*bits + 7, 8)
     cam[PHX_BUF_DST_YLENGTH] = height
     cam[PHX_BIT_SHIFT]       = 0 # FIXME: PHX_BIT_SHIFT_ALIGN_LSB not defined
-    cam[PHX_DST_FORMAT]      = (depth ≤ 8 ? PHX_DST_FORMAT_Y8 :
-                                PHX_DST_FORMAT_Y16)
 
     # Use native byte order for the destination buffer.
     if ENDIAN_BOM == 0x04030201
@@ -255,6 +253,38 @@ function _openhook(cam::Camera{MikrotronMC408xModel})
     end
 
     return nothing
+end
+
+updatepixelformat(cam::Camera{MikrotronMC408xModel}) =
+    updatepixelformat(cam, cam[PIXEL_FORMAT])
+
+function updatepixelformat(cam::Camera{MikrotronMC408xModel},
+                           pixelformat::Integer)
+    local srcformat::ParamValue, srcdepth::ParamValue
+    local dstformat::ParamValue
+    if pixelformat == PIXEL_FORMAT_MONO8
+        srcformat = PHX_CAM_SRC_MONO
+        srcdepth  = 8
+        dstformat = PHX_DST_FORMAT_Y8
+    elseif pixelformat == PIXEL_FORMAT_MONO10
+        srcformat = PHX_CAM_SRC_MONO
+        srcdepth  = 10
+        dstformat = PHX_DST_FORMAT_Y10
+    elseif pixelformat == PIXEL_FORMAT_BAYERGR8
+        srcformat = PHX_CAM_SRC_BAY_RGGB
+        srcdepth  = 8
+        dstformat = PHX_DST_FORMAT_BAY8
+    elseif pixelformat == PIXEL_FORMAT_BAYERGR10
+        srcformat = PHX_CAM_SRC_BAY_RGGB
+        srcdepth  = 10
+        dstformat = PHX_DST_FORMAT_BAY10
+    else
+        error("unknown pixel format 0x", hex(pixelformat))
+    end
+    cam[PHX_CAM_SRC_COL]   = srcformat
+    cam[PHX_CAM_SRC_DEPTH] = srcdepth
+    cam[PHX_DST_FORMAT]    = dstformat
+    return dstformat
 end
 
 function updateactiveregion(cam::Camera{MikrotronMC408xModel},
@@ -526,8 +556,9 @@ getspeed(cam::Camera{MikrotronMC408xModel}) =
      convert(Float64, cam[EXPOSURE_TIME]/1_000_000))
 
 # Extend method.
-function setspeed!(cam::Camera{MikrotronMC408xModel}, fps::Float64, exp::Float64)
-    checkspeed(fps, exp)
+function setspeed!(cam::Camera{MikrotronMC408xModel},
+                   fps::Float64, exp::Float64)
+    checkspeed(cam, fps, exp)
     newfps = round(UInt32, fps)
     newexp = round(UInt32, exp*1_000_000)
     oldfps = cam[ACQUISITION_FRAME_RATE]
@@ -626,7 +657,7 @@ function setparam!(cam::Camera{MikrotronMC408xModel},
                 end
             end
             printerror(errmode) # restore previous mode
-            error(@sprinf("failed to change gamma correction to %0.1f", val))
+            error(@sprintf("failed to change gamma correction to %0.1f", val))
         end
     end
     printerror(errmode) # restore previous mode
