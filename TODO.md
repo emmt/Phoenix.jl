@@ -10,7 +10,7 @@
 
 - **FIXED** Last image not taken.
 
-- Support subsampling or rebinning of pixels.
+- **DONE** Support subsampling or rebinning of pixels.
 
 - Cache settings (see benchmarking).
 
@@ -54,4 +54,3 @@
   ````
 
 with `T` the type of the parameter value and `A` one of the access mode.
-

@@ -1,3 +1,5 @@
+- Implement sub-sampling.
+
 - Possibility to skip corrupted initial image(s).
 
 - Use `ScientificCameras` package and implement its API.

@@ -174,21 +174,11 @@ function _openhook(cam::Camera{MikrotronMC408xModel})
         error("bad device model name (got \"$modelname\", expecting \"MC408[2367]\")")
     end
 
-    # Get size of current ROI and pixel format.
-    width  = cam[WIDTH]
-    height = cam[HEIGHT]
-
-    # FIXME: We do not support subsampling yet.
+    # Get size of current ROI.
     xsub = Int(cam[DECIMATION_HORIZONTAL])
-    if xsub != one(xsub)
-        warn("horizontal subsampling is not yet supported")
-        cam[DECIMATION_HORIZONTAL] = (xsub = one(xsub))
-    end
     ysub = Int(cam[DECIMATION_VERTICAL])
-    if ysub != one(ysub)
-        warn("vertical subsampling is not yet supported")
-        cam[DECIMATION_VERTICAL] =  (ysub = one(ysub))
-    end
+    width  = div(Int(cam[WIDTH]),  xsub)
+    height = div(Int(cam[HEIGHT]), ysub)
 
     # The following settings are the same as the contents of the configuration
     # file "Mikrotron_MC4080_CXP.pcf".
@@ -214,7 +204,7 @@ function _openhook(cam::Camera{MikrotronMC408xModel})
 
     # Set the format of the image sent by the camera.
     dstformat = updatepixelformat(cam)
-    updateactiveregion(cam, width, height, xsub, ysub)
+    updateactiveregion(cam, width, height)
 
     # Acquisition settings.
     cam[PHX_ACQ_BLOCKING]          = PHX_ENABLE
@@ -288,14 +278,13 @@ function updatepixelformat(cam::Camera{MikrotronMC408xModel},
 end
 
 function updateactiveregion(cam::Camera{MikrotronMC408xModel},
-                            width::Integer, height::Integer,
-                            xsub::Integer = 1, ysub::Integer = 1)
+                            width::Integer, height::Integer)
     cam[PHX_CAM_ACTIVE_XOFFSET] = 0
     cam[PHX_CAM_ACTIVE_YOFFSET] = 0
     cam[PHX_CAM_ACTIVE_XLENGTH] = width
     cam[PHX_CAM_ACTIVE_YLENGTH] = height
-    cam[PHX_CAM_XBINNING]       = xsub
-    cam[PHX_CAM_YBINNING]       = ysub
+    cam[PHX_CAM_XBINNING]       = 1
+    cam[PHX_CAM_YBINNING]       = 1
     nothing
 end
 
@@ -358,23 +347,13 @@ function setroi!(cam::Camera{MikrotronMC408xModel},
     oldwidth  = Int(cam[WIDTH])
     oldheight = Int(cam[HEIGHT])
 
-    # Fix values.
-    if xsub != one(xsub)
-        cam[DECIMATION_HORIZONTAL] = (xsub = one(xsub))
-        quiet || warn("horizontal subsampling is not yet supported")
-    end
-    if ysub !=  one(ysub)
-        cam[DECIMATION_VERTICAL] = (ysub = one(ysub))
-        quiet || warn("vertical subsampling is not yet supported")
-    end
-
     # Compute new camera settings (to use the smallest active region within
     # constraints) and fix settings in a specific order such that the actual
     # camera settings are always valid.
-    newxoff   = downround(xoff, HORIZONTAL_INCREMENT)
-    newyoff   = downround(yoff, VERTICAL_INCREMENT)
-    newwidth  = upround(xoff + width,  HORIZONTAL_INCREMENT) - newxoff
-    newheight = upround(yoff + height, VERTICAL_INCREMENT) - newyoff
+    newxoff   = downround(xoff*xsub, HORIZONTAL_INCREMENT)
+    newyoff   = downround(yoff*ysub, VERTICAL_INCREMENT)
+    newwidth  = upround((xoff + width)*xsub,  HORIZONTAL_INCREMENT) - newxoff
+    newheight = upround((yoff + height)*ysub, VERTICAL_INCREMENT) - newyoff
     if newxoff < oldxoff
         cam[OFFSET_X] = newxoff
     end
@@ -395,8 +374,12 @@ function setroi!(cam::Camera{MikrotronMC408xModel},
     end
 
     # Set frame grabber paramaters.
-    updateactiveregion(cam, newwidth, newheight, xsub, ysub)
-    updatesourceregion(cam, xoff - newxoff, yoff - newyoff, width, height)
+    updateactiveregion(cam,
+                       div(newwidth, xsub),
+                       div(newheight, ysub))
+    updatesourceregion(cam,
+                       xoff - div(newxoff, xsub),
+                       yoff - div(newyoff, ysub), width, height)
     nothing
 end
 
@@ -407,13 +390,13 @@ function getroi(cam::Camera{MikrotronMC408xModel};
     @assert cam.state > 0
     local xoff::Int, yoff::Int, width::Int, height::Int
 
-    # Retrieve current settings for the camera active region.
+    # Retrieve current settings for the camera active region in macro-pixels.
     xsub      = Int(cam[DECIMATION_HORIZONTAL])
     ysub      = Int(cam[DECIMATION_VERTICAL])
-    camxoff   = Int(cam[OFFSET_X])
-    camyoff   = Int(cam[OFFSET_Y])
-    camwidth  = Int(cam[WIDTH])
-    camheight = Int(cam[HEIGHT])
+    camxoff   = div(Int(cam[OFFSET_X]), xsub)
+    camyoff   = div(Int(cam[OFFSET_Y]), ysub)
+    camwidth  = div(Int(cam[WIDTH]), xsub)
+    camheight = div(Int(cam[HEIGHT]), ysub)
 
     # Retrieve current settings for the frame grabber source region.
     srcxoff   = Int(cam[PHX_ROI_SRC_XOFFSET])
@@ -424,14 +407,6 @@ function getroi(cam::Camera{MikrotronMC408xModel};
     # Check settings and fix them.
     clip = false
     reset = false
-    if xsub != one(xsub)
-        cam[DECIMATION_HORIZONTAL] = (xsub = one(xsub))
-        quiet || warn("horizontal subsampling is not yet supported")
-    end
-    if ysub !=  one(ysub)
-        cam[DECIMATION_VERTICAL] = (ysub = one(ysub))
-        quiet || warn("vertical subsampling is not yet supported")
-    end
     if (srcxoff ≥ camwidth  || srcxoff + srcwidth  < 1 ||
         srcyoff ≥ camheight || srcyoff + srcheight < 1)
         reset = true
@@ -471,12 +446,28 @@ function getroi(cam::Camera{MikrotronMC408xModel};
 
     # Make sure the active region is correct and return the current ROI
     # relative to the sensor.
-    updateactiveregion(cam, camwidth, camheight, xsub, ysub)
+    updateactiveregion(cam, camwidth, camheight)
     return (camxoff + srcxoff, camyoff + srcyoff, srcwidth, srcheight)
 end
 
 downround(a::Integer, b::Integer) = div(a, b)*b
 upround(a::Integer, b::Integer) = div((b - 1) + a, b)*b
+
+# Extend method.
+getdecimation(cam::Camera{MikrotronMC408xModel}) =
+    (Int(cam[DECIMATION_HORIZONTAL]), Int(cam[DECIMATION_VERTICAL]))
+
+# Extend method.
+function setdecimation!(cam::Camera{MikrotronMC408xModel},
+                        xsub::Int, ysub::Int)
+    if cam[DECIMATION_HORIZONTAL] != xsub
+        cam[DECIMATION_HORIZONTAL] = xsub
+    end
+    if cam[DECIMATION_VERTICAL] != ysub
+        cam[DECIMATION_VERTICAL] = ysub
+    end
+    nothing
+end
 
 # Extend method.
 getfullwidth(cam::Camera{MikrotronMC408xModel}) =
