@@ -11,87 +11,55 @@ This module provides a Julia interface to ActiveSilicon Phoenix frame grabber.
 
 ## Usage
 
-A typical example of using the `Phoenix` module to acquire and process
-some frames is:
+The [`Phoenix`]((https://github.com/emmt/Phoenix.jl) package complies with the
+[`ScientificCameras`](https://github.com/emmt/ScientificCameras.jl) interface.
+This interface is detailled there but some short examples are provided in what
+follows.
+
+The simplest example of sequential acqisition of `n` images is:
 
     using Phoenix
     cam = open(Phoenix.MikrotronMC408xModel)
-    cfg = getconfig!(cam)
-    cfg.roi_x = ...
-    cfg.roi_y = ...
-    ...
-    fixconfig!(cfg, maxsize(cam); shrink=true)
-    setconfig!(cam, cfg)
-    bufs = start(cam, UInt16, 4)
-    while true
-        # Wait for next frame.
-        index, number, overflows = waitframe(cam)
+    imgs = read(cam, n)
+    close(cam) # optional
+
+The simplest example of continuous acquisition (using 4 image buffers) and
+processing is:
+
+    using Phoenix
+    cam = open(Phoenix.MikrotronMC408xModel)
+    bufs = start(cam, 4)
+    for number in 1:100
+        index = wait(cam) # wait for next frame
         buf = bufs[index] # get image buffer
         ... # process the image buffer
-        releaseframe(cam)
-        if number > 100
-            break
-        end
+        release(cam)
     end
     abort(cam)
-    close(cam)
+    close(cam) # optional
 
-Step-by-step explanations are now given:
+Note that:
 
     using Phoenix
 
-imports `Phoenix` module to directly access exported methods (and
-constants);
+imports `Phoenix` module to directly access exported methods notably all public
+methods from the package
+[`ScientificCameras`](https://github.com/emmt/ScientificCameras.jl) which does
+not need to be imported.  Importing the `Phoenix` module also defines some
+constants prefixed by `PHX_` or `CXP_`.
 
-    cam = open(Phoenix.MikrotronMC408xModel)
 
-creates a new camera instance `cam` for the camera model
-`MikrotronMC408xModel` and open its board connection;
+### Additions to the standard interface
 
-    cfg = getconfiguration(cam)
+Some additional options are available for some methods compared to the
+interface specified in the
+[`ScientificCameras`](https://github.com/emmt/ScientificCameras.jl) package:
 
-retrieves the actual configuration of the camera as `cfg` (an instance of
-`Phoenix.Configuration`);
+- In the `read` method, keyword `skip` can be used to specify the number of
+  initial image buffers to skip (*e.g.* to get rid of *dirty* images).
 
-    cfg.roi_x = ...
-    cfg.roi_y = ...
-    ...
-    fixconfig!(cfg, maxsize(cam); shrink=true)
-    setconfiguration!(cam, cfg)
-
-modifies the parameters, fix any (size) inconsistencies and set the
-configuration to use with the camera;
-
-    bufs = start(cam, UInt16, 4)
-
-starts the acquisition with pixels of type `UInt16` and `4` virtual frame
-buffers returned as `bufs`;
-
-    while true
-        # Wait for next frame.
-        index, number, overflows = waitframe(cam)
-        buf = bufs[index] # get image buffer
-        ... # process the image buffer
-        releaseframe(cam)
-        if number > 100
-            break
-        end
-    end
-
-in the acquisition loop: waits for the next frame (and retrieves the index of
-the current frame in the virtual buffers, the current frame number and the
-number of overflows so far), carries out processing and releases the frame so
-that it can be used to acquire another image;
-
-    abort(cam)
-
-aborts acquisition without waiting for the current frame to finish (another
-possibility is to call `stop(cam)` which waits for the current frame);
-
-    close(cam)
-
-closes the camera (this is optional, closing is automatically done when the
-camera is finalised by the garbage collector).
+- In the `wait` method, keyword `drop` indicates whether to get rid of the
+  oldest image buffers when there are more than one pending image buffers;
 
 
 ## Tricks
