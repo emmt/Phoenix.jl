@@ -77,7 +77,7 @@ abstract type Register end
 access mode `A`.
 
 """
-immutable RegisterValue{T,A} <: Register where {T,A<:AccessMode}
+struct RegisterValue{T,A} <: Register where {T,A<:AccessMode}
     addr::UInt32
 end
 
@@ -89,7 +89,7 @@ const RegisterEnum{A} = RegisterValue{UInt32,A} where {A<:AccessMode}
 register for a value of type `T` with access mode `A`.
 
 """
-immutable RegisterAddress{T,A} <: Register where {T,A<:AccessMode}
+struct RegisterAddress{T,A} <: Register where {T,A<:AccessMode}
     addr::UInt32
 end
 
@@ -99,7 +99,7 @@ end
 `val` at address `addr`.
 
 """
-immutable RegisterCommand{T} <: Register where {T}
+struct RegisterCommand{T} <: Register where {T}
     addr::UInt32
     value::T
 end
@@ -110,7 +110,7 @@ end
 address `addr` with access mode `A`.
 
 """
-immutable RegisterString{N,A} <: Register where {N,A<:AccessMode}
+struct RegisterString{N,A} <: Register where {N,A<:AccessMode}
     addr::UInt32
 end
 
