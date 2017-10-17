@@ -62,7 +62,6 @@ include("base.jl")
 include("utils.jl")
 include("errors.jl")
 include("acquisition.jl")
-include("models.jl")
 
 module Development
 
@@ -100,6 +99,7 @@ import
     ..LutInfo,
     ..Param,
     ..Register,
+    ..RegisterValue,
     ..RegisterEnum,
     ..RegisterAddress,
     ..RegisterCommand,
@@ -112,8 +112,6 @@ import
     .._setparam!,
     ..readstream,
     .._readstream,
-    .._getparameter,
-    .._setparameter!,
     .._readregister,
     .._readcontrol,
     .._writeregister,
@@ -182,6 +180,7 @@ export
     LutInfo,
     Param,
     Register,
+    RegisterValue,
     RegisterEnum,
     RegisterAddress,
     RegisterCommand,
@@ -194,8 +193,6 @@ export
     _setparam!,
     readstream,
     _readstream,
-    _getparameter,
-    _setparameter!,
     _readregister,
     _readcontrol,
     _writeregister,
@@ -231,5 +228,7 @@ export
     _stophook
 
 end # module Phoenix.Development
+
+include("models.jl")
 
 end # module Phoenix

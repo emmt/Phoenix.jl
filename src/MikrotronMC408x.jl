@@ -569,7 +569,6 @@ function setpixelformat!(cam::Camera{MikrotronMC408xModel},
         end
     end
 
-
     # Determine pixel format of captured images.
     dstfmt = capture_format(B)
     if dstfmt == zero(dstfmt)
@@ -647,7 +646,7 @@ function setifneeded!(cam::Camera{MikrotronMC408xModel},
                       val) where {T<:Integer}
     newval = round(T, val)
     if cam[reg] != newval
-        cam[reg] != newval
+        cam[reg] = newval
     end
     nothing
 end
@@ -657,15 +656,20 @@ function setifneeded!(cam::Camera{MikrotronMC408xModel},
                       val) where {T<:AbstractFloat}
     newval = convert(T, val)
     if cam[reg] != newval
-        cam[reg] != newval
+        cam[reg] = newval
     end
     nothing
+end
+
+function setparam!(cam::Camera{MikrotronMC408xModel},
+                   reg::RegisterValue{T,A}, val) where {T<:Real,A<:Writable}
+    setparam!(cam, reg, convert(T, val))
 end
 
 # This overloading of the method is to treat specifically certain problematic
 # parameters such as the pixel format.
 function setparam!(cam::Camera{MikrotronMC408xModel},
-                   reg::RegisterValue{T,A}, val) where {T,A<:Writable}
+                   reg::RegisterValue{T,A}, val::T) where {T<:Real,A<:Writable}
     # Unfortunately, setting some parameters (as the pixel format or the gamma
     # correction) returns an error with an absurd code
     # (`PHX_ERROR_MALLOC_FAILED`) which, in practice can be ignored as, after a
@@ -678,7 +682,8 @@ function setparam!(cam::Camera{MikrotronMC408xModel},
     # tries is exceeded.  To avoid alarming the user, printing of error
     # messages is disabled during this process.
     errmode = printerror(false) # temporarily switch reporting of errors
-    status = _setparam!(cam, reg, val)
+    buf = Ref{T}(val)
+    status = _setparam!(cam, reg, buf)
     if status != PHX_OK
         retry = false
         if reg.addr == PIXEL_FORMAT.addr && (val == PIXEL_FORMAT_MONO8     ||
@@ -686,7 +691,7 @@ function setparam!(cam::Camera{MikrotronMC408xModel},
                                              val == PIXEL_FORMAT_BAYERGR8  ||
                                              val == PIXEL_FORMAT_BAYERGR10 )
             for i in 1:3
-                if _getparam(cam, reg) == (PHX_OK, val)
+                if _getparam(cam, reg, buf) == PHX_OK && buf[] == val
                     return nothing
                 end
             end
@@ -694,8 +699,7 @@ function setparam!(cam::Camera{MikrotronMC408xModel},
             error("failed to change pixel format to 0x", hex(val))
         elseif reg.addr == GAMMA && (GAMMA_MIN ≤ gamma ≤ GAMMA_MAX)
             for i in 1:3
-                status, curval = _getparam(cam, reg)
-                if status == PHX_OK && abs(curval - val) ≤ GAMMA_INCREMENT
+                if _getparam(cam, reg, buf) == PHX_OK && abs(buf[] - val) ≤ GAMMA_INCREMENT
                     return nothing
                 end
             end

@@ -61,7 +61,6 @@ Base.eltype(cam::Camera) = eltype(eltype(cam.bufs))
 Base.length(cam::Camera) = length(cam.bufs)
 Base.getindex(cam::Camera, i::Integer) = getindex(cam.bufs, i)
 
-
 @inline _check(status::Status) =
     (status == PHX_OK || throw(PHXError(status)); nothing)
 
@@ -82,48 +81,51 @@ This method implements the syntax:
 
     cam[key] -> val
 
+A variant is available which does not throw an error but returns a status and
+stores the value in `buf` (a pointer or a reference):
+
+    _getparam(cam, key, buf) -> status
+
+
 See also: [`setparam!`](@ref), [`isreadable`](@ref).
 
 """
-function getparam(cam::Camera, param::Param{T,A}) :: T where {T<:Integer,A<:Readable}
-    ref = Ref{T}(0)
-    _check(_getparameter(cam.handle, param.ident, ref))
+function getparam(cam::Camera,
+                  param::Param{T,A}) :: T where {T<:Integer,A<:Readable}
+    ref = Ref{T}()
+    _check(_getparam(cam, param, ref))
     return ref[]
 end
 
-function getparam(cam::Camera, param::Param{String,A}) :: String where {A<:Readable}
-    ref = Ref{Ptr{UInt8}}(0)
-    _check(_getparameter(cam.handle, param.ident, ref))
+function getparam(cam::Camera,
+                  param::Param{String,A}) :: String where {A<:Readable}
+    ref = Ref{Ptr{UInt8}}()
+    _check(_getparam(cam, param, ref))
     return (ref[] == C_NULL ? "" : unsafe_string(ref[]))
 end
 
-function getparam(cam::Camera, param::Param{Ptr{Void},A}) :: Ptr{Void} where {A<:Readable}
-    ref = Ref{Ptr{Void}}(0)
-    _check(_getparameter(cam.handle, param.ident, ref))
+function getparam(cam::Camera,
+                  param::Param{Ptr{Void},A}) :: Ptr{Void} where {A<:Readable}
+    ref = Ref{Ptr{Void}}()
+    _check(_getparam(cam, param, ref))
     return ref[]
 end
 
 getparam(cam::Camera, param::Param) =
     error("unreadable parameter or undetermined parameter type")
 
-function getparam(cam::Camera, reg::RegisterString{N,A}) where {N,A<:Readable}
+function getparam(cam::Camera,
+                  reg::RegisterString{N,A}) where {N,A<:Readable}
     buf = Array{UInt8}(N)
     _check(_readregister(cam, reg, buf, N))
     return unsafe_string(pointer(buf))
 end
 
-function getparam(cam::Camera, reg::RegisterValue{T,A}) where {T,A<:Readable}
-    status, value = _getparam(cam, reg)
-    _check(status)
-    return value
-end
-
-# This low-level version which returns a status and a value and does not throw
-# errors is needed by some camera models.
-function _getparam(cam::Camera, reg::RegisterValue{T,A}) where {T,A<:Readable}
-    buf = Ref{T}(0)
-    status = _readregister(cam, reg, buf, sizeof(T))
-    return status, (status == PHX_OK && cam.swap ? bswap(buf[]) : buf[])
+function getparam(cam::Camera,
+                  reg::RegisterValue{T,A}) where {T<:Real,A<:Readable}
+    buf = Ref{T}()
+    _check(_getparam(cam, reg, buf))
+    return buf[]
 end
 
 getparam(cam::Camera, reg::RegisterAddress{T,A}) where {T,A<:Readable} =
@@ -131,6 +133,22 @@ getparam(cam::Camera, reg::RegisterAddress{T,A}) where {T,A<:Readable} =
 
 getparam(cam::Camera, reg::Register) =
     error("attempt to get an unreadable CoaXPress parameter")
+
+_getparam(cam::Camera, param::Param{T,A}, buf::Union{Ptr,Ref}) where {T,A<:Readable} =
+    ccall(_PHX_ParameterGet, Status, (Handle, Cuint, Ptr{Void}),
+          cam.handle, param.ident, buf)
+
+function _getparam(cam::Camera,
+                   reg::RegisterValue{T,A},
+                   buf::Ref{T}) where {T<:Real,A<:Readable}
+    status = _readregister(cam, reg, buf, sizeof(T))
+    if cam.swap
+        buf[] = bswap(buf[])
+    end
+    return status
+end
+
+@doc @doc(getparam) _getparam
 
 """
 
@@ -143,7 +161,7 @@ See also: [`getparam`](@ref), [`setparam!`](@ref).
 
 """
 function resolve(cam::Camera, reg::RegisterAddress{T,A}) where {T,A<:AccessMode}
-    buf = Ref{UInt32}(0)
+    buf = Ref{UInt32}()
     _check(_readregister(cam, reg, buf, 4))
     addr = (cam.swap ? bswap(buf[]) : buf[])
     return RegisterValue{T,A}(addr)
@@ -159,31 +177,41 @@ syntax:
 
     cam[key] = val
 
+A variant is available which does not throw an error but returns a status and
+stores the value in `buf` (a pointer or a reference):
+
+    _setparam(cam, key, buf) -> status
+
+Beware that this low-level version does not check its arguments.
+
+
 See also: [`getparam`](@ref), [`iswritable`](@ref).
 
 """
 setparam!(cam::Camera, param::Param{T,A}, val::Integer) where {T<:Integer,A<:Writable} =
-    _check(_setparameter!(cam.handle, param.ident, Ref{T}(val)))
+    _check(_setparam!(cam, param, Ref{T}(val)))
 
 setparam!(cam::Camera, param::Param{String,A}, val::AbstractString) where {A<:Writable} =
-    _check(_setparameter!(cam.handle, param.ident, Ref(pointer(cstring(val)))))
+    _check(_setparam!(cam, param, Ref(pointer(cstring(val)))))
 
 setparam!(cam::Camera, param::Param, val) =
     error("unwritable parameter or undetermined parameter type")
 
-function setparam!(cam::Camera, param::Param{Ptr{T},A},
+function setparam!(cam::Camera,
+                   param::Param{Ptr{T},A},
                    val::Union{Vector{T},Ptr{T},Ref{T}}) where {T,A<:Writable}
-    _check(ccall(_PHX_ParameterSet, Status, (Handle, Cuint, Ptr{T}),
-                 cam.handle, param, val))
+    _check(_setparam!(cam, param, val))
 end
 
-function setparam!(cam::Camera, param::Param{Ptr{Void},A},
+function setparam!(cam::Camera,
+                   param::Param{Ptr{Void},A},
                    val::Union{Vector,Ptr,Ref}) where {A<:Writable}
-    _check(ccall(_PHX_ParameterSet, Status, (Handle, Cuint, Ptr{Void}),
-                 cam.handle, param, val))
+    _check(_setparam!(cam, param, val))
 end
 
-function setparam!(cam::Camera, reg::RegisterString{N,A}, str::AbstractString) where {N,A<:Writable}
+function setparam!(cam::Camera,
+                   reg::RegisterString{N,A},
+                   str::AbstractString) where {N,A<:Writable}
     buf = Array{UInt8}(N)
     m = min(length(str), N)
     @inbounds for i in 1:m
@@ -196,16 +224,8 @@ function setparam!(cam::Camera, reg::RegisterString{N,A}, str::AbstractString) w
     _check(_writeregister(cam, reg, buf, N))
 end
 
-setparam!(cam::Camera, reg::RegisterValue{T,A}, val) where {T,A<:Writable} =
+setparam!(cam::Camera, reg::RegisterValue{T,A}, val) where {T<:Real,A<:Writable} =
     _check(_setparam!(cam, reg, val))
-
-# This low-level version which returns a status and does not throw errors is
-# needed by some camera models.
-function _setparam!(cam::Camera, reg::RegisterValue{T,A}, val) where {T,A<:Writable}
-    tmp = convert(T, val)
-    buf = Ref{T}(cam.swap ? bswap(tmp) : tmp)
-    _writeregister(cam, reg, buf, sizeof(T))
-end
 
 setparam!(cam::Camera, reg::RegisterAddress{T,A}, val) where {T,A<:Writable} =
     setparam!(cam, resolve(cam, reg), val)
@@ -213,6 +233,19 @@ setparam!(cam::Camera, reg::RegisterAddress{T,A}, val) where {T,A<:Writable} =
 setparam!(cam::Camera, reg::Register, val) =
     error("attempt to set an unwritable CoaXPress parameter")
 
+_setparam!(cam::Camera, param::Param{T,A}, buf::Union{Ptr,Ref,Vector}) where {T,A<:Writable} =
+    ccall(_PHX_ParameterSet, Status, (Handle, Cuint, Ptr{Void}),
+          cam.handle, param.ident, buf)
+
+function _setparam!(cam::Camera,
+                    reg::RegisterValue{T,A},
+                    val) where {T<:Real,A<:Writable}
+    tmp = convert(T, val) :: T
+    buf = Ref{T}(cam.swap ? bswap(tmp) : tmp)
+    _writeregister(cam, reg, buf, sizeof(T))
+end
+
+@doc @doc(setparam!) _setparam!
 
 #------------------------------------------------------------------------------
 # Reading/Writing CoaXPress Registers
@@ -321,21 +354,14 @@ function Base.open(cam::Camera;
     ref_channelnumber = Ref{ParamValue}(channelnumber)
     ref_boardmode = Ref{ParamValue}(boardmode)
 
-    # Set specific parameters.
+    # Set initial parameters.
     if boardtype != 0
-        _check(_setparameter!(cam.handle,
-                              PHX_BOARD_VARIANT.ident, ref_boardtype))
+        _check(_setparam!(cam, PHX_BOARD_VARIANT, ref_boardtype))
     end
-    _check(_setparameter!(cam.handle,
-                          PHX_BOARD_NUMBER.ident, ref_boardnumber))
-    _check(_setparameter!(cam.handle,
-                          PHX_CHANNEL_NUMBER.ident, ref_channelnumber))
-    _check(_setparameter!(cam.handle,
-                          PHX_CONFIG_MODE.ident, ref_boardmode))
-
-    # Set configuration file.
-    _check(_setparameter!(cam.handle,
-                          PHX_CONFIG_FILE.ident, ref_configfile))
+    _check(_setparam!(cam, PHX_BOARD_NUMBER,   ref_boardnumber))
+    _check(_setparam!(cam, PHX_CHANNEL_NUMBER, ref_channelnumber))
+    _check(_setparam!(cam, PHX_CONFIG_MODE,    ref_boardmode))
+    _check(_setparam!(cam, PHX_CONFIG_FILE,    ref_configfile))
 
     # Open the camera.
     _check(ccall(_PHX_Open, Status, (Handle,), cam.handle))
@@ -421,31 +447,6 @@ function Base.close(cam::Camera)
     return nothing
 end
 
-"""
-    _getparameter(h, param, buf) -> status
-
-retrieves the parameter `param` for the camera handle `h` and stores
-its value in `buf`.
-
-See also: [`_setparameter!`](@ref)
-
-"""
-_getparameter(handle::Handle, param::Cuint, buf::Union{Ptr{T},Ref{T}}) where {T} =
-    ccall(_PHX_ParameterGet, Status, (Handle, Cuint, Ptr{T}),
-          handle, param, buf)
-
-"""
-    _setparameter!(h, param, buf) -> status
-
-sets the parameter `param` for the camera handle `h` to the value stored in
-`buf`.
-
-See also: [`_getparameter`](@ref)
-
-"""
-_setparameter!(handle::Handle, param::Cuint, buf::Union{Ptr{T},Ref{T}}) where {T} =
-    ccall(_PHX_ParameterSet, Status, (Handle, Cuint, Ptr{T}),
-          handle, param, buf)
 
 """
     _readstream(cam, cmd, ptr) -> status
