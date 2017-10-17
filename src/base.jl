@@ -61,7 +61,7 @@ Base.eltype(cam::Camera) = eltype(eltype(cam.bufs))
 Base.length(cam::Camera) = length(cam.bufs)
 Base.getindex(cam::Camera, i::Integer) = getindex(cam.bufs, i)
 
-@inline _check(status::Status) =
+@inline checkstatus(status::Status) =
     (status == PHX_OK || throw(PHXError(status)); nothing)
 
 #-------------------------------------------------------------------------------
@@ -93,21 +93,21 @@ See also: [`setparam!`](@ref), [`isreadable`](@ref).
 function getparam(cam::Camera,
                   param::Param{T,A}) :: T where {T<:Integer,A<:Readable}
     ref = Ref{T}()
-    _check(_getparam(cam, param, ref))
+    checkstatus(_getparam(cam, param, ref))
     return ref[]
 end
 
 function getparam(cam::Camera,
                   param::Param{String,A}) :: String where {A<:Readable}
     ref = Ref{Ptr{UInt8}}()
-    _check(_getparam(cam, param, ref))
+    checkstatus(_getparam(cam, param, ref))
     return (ref[] == C_NULL ? "" : unsafe_string(ref[]))
 end
 
 function getparam(cam::Camera,
                   param::Param{Ptr{Void},A}) :: Ptr{Void} where {A<:Readable}
     ref = Ref{Ptr{Void}}()
-    _check(_getparam(cam, param, ref))
+    checkstatus(_getparam(cam, param, ref))
     return ref[]
 end
 
@@ -117,14 +117,14 @@ getparam(cam::Camera, param::Param) =
 function getparam(cam::Camera,
                   reg::RegisterString{N,A}) where {N,A<:Readable}
     buf = Array{UInt8}(N)
-    _check(_readregister(cam, reg, buf, N))
+    checkstatus(_readregister(cam, reg, buf, N))
     return unsafe_string(pointer(buf))
 end
 
 function getparam(cam::Camera,
                   reg::RegisterValue{T,A}) where {T<:Real,A<:Readable}
     buf = Ref{T}()
-    _check(_getparam(cam, reg, buf))
+    checkstatus(_getparam(cam, reg, buf))
     return buf[]
 end
 
@@ -162,7 +162,7 @@ See also: [`getparam`](@ref), [`setparam!`](@ref).
 """
 function resolve(cam::Camera, reg::RegisterAddress{T,A}) where {T,A<:AccessMode}
     buf = Ref{UInt32}()
-    _check(_readregister(cam, reg, buf, 4))
+    checkstatus(_readregister(cam, reg, buf, 4))
     addr = (cam.swap ? bswap(buf[]) : buf[])
     return RegisterValue{T,A}(addr)
 end
@@ -189,10 +189,10 @@ See also: [`getparam`](@ref), [`iswritable`](@ref).
 
 """
 setparam!(cam::Camera, param::Param{T,A}, val::Integer) where {T<:Integer,A<:Writable} =
-    _check(_setparam!(cam, param, Ref{T}(val)))
+    checkstatus(_setparam!(cam, param, Ref{T}(val)))
 
 setparam!(cam::Camera, param::Param{String,A}, val::AbstractString) where {A<:Writable} =
-    _check(_setparam!(cam, param, Ref(pointer(cstring(val)))))
+    checkstatus(_setparam!(cam, param, Ref(pointer(cstring(val)))))
 
 setparam!(cam::Camera, param::Param, val) =
     error("unwritable parameter or undetermined parameter type")
@@ -200,13 +200,13 @@ setparam!(cam::Camera, param::Param, val) =
 function setparam!(cam::Camera,
                    param::Param{Ptr{T},A},
                    val::Union{Vector{T},Ptr{T},Ref{T}}) where {T,A<:Writable}
-    _check(_setparam!(cam, param, val))
+    checkstatus(_setparam!(cam, param, val))
 end
 
 function setparam!(cam::Camera,
                    param::Param{Ptr{Void},A},
                    val::Union{Vector,Ptr,Ref}) where {A<:Writable}
-    _check(_setparam!(cam, param, val))
+    checkstatus(_setparam!(cam, param, val))
 end
 
 function setparam!(cam::Camera,
@@ -221,11 +221,11 @@ function setparam!(cam::Camera,
     @inbounds for i in m+1:N
         buf[i] = zero(UInt8)
     end
-    _check(_writeregister(cam, reg, buf, N))
+    checkstatus(_writeregister(cam, reg, buf, N))
 end
 
 setparam!(cam::Camera, reg::RegisterValue{T,A}, val) where {T<:Real,A<:Writable} =
-    _check(_setparam!(cam, reg, val))
+    checkstatus(_setparam!(cam, reg, val))
 
 setparam!(cam::Camera, reg::RegisterAddress{T,A}, val) where {T,A<:Writable} =
     setparam!(cam, resolve(cam, reg), val)
@@ -254,10 +254,10 @@ end
 
 function Base.send(cam::Camera, reg::RegisterCommand{T}) where {T}
     data = Ref{T}(cam.swap ? bswap(reg.value) : reg.value)
-    _check(_writeregister(cam, reg, data, sizeof(T)))
+    checkstatus(_writeregister(cam, reg, data, sizeof(T)))
 end
 
-readstream(args...) = _check(_readstream(args...))
+readstream(args...) = checkstatus(_readstream(args...))
 
 
 #-------------------------------------------------------------------------------
@@ -356,15 +356,15 @@ function Base.open(cam::Camera;
 
     # Set initial parameters.
     if boardtype != 0
-        _check(_setparam!(cam, PHX_BOARD_VARIANT, ref_boardtype))
+        checkstatus(_setparam!(cam, PHX_BOARD_VARIANT, ref_boardtype))
     end
-    _check(_setparam!(cam, PHX_BOARD_NUMBER,   ref_boardnumber))
-    _check(_setparam!(cam, PHX_CHANNEL_NUMBER, ref_channelnumber))
-    _check(_setparam!(cam, PHX_CONFIG_MODE,    ref_boardmode))
-    _check(_setparam!(cam, PHX_CONFIG_FILE,    ref_configfile))
+    checkstatus(_setparam!(cam, PHX_BOARD_NUMBER,   ref_boardnumber))
+    checkstatus(_setparam!(cam, PHX_CHANNEL_NUMBER, ref_channelnumber))
+    checkstatus(_setparam!(cam, PHX_CONFIG_MODE,    ref_boardmode))
+    checkstatus(_setparam!(cam, PHX_CONFIG_FILE,    ref_configfile))
 
     # Open the camera.
-    _check(ccall(_PHX_Open, Status, (Handle,), cam.handle))
+    checkstatus(ccall(_PHX_Open, Status, (Handle,), cam.handle))
     cam.state = 1
 
     # Discover whether we have a CoaXPress camera.
@@ -402,13 +402,13 @@ function Base.open(cam::Camera;
     end
 
     # Apply specific post-open configuration.
-    _openhook(cam)
+    openhook(cam)
 
     return cam
 end
 
 """
-    _openhook(cam)
+    openhook(cam)
 
 performs specific operations just after camera `cam` has been opened.  This
 function should return nothing but may throw exceptions to signal errors.
@@ -416,7 +416,7 @@ function should return nothing but may throw exceptions to signal errors.
 See also: [`open`](@ref)
 
 """
-_openhook(cam::Camera) = nothing
+openhook(cam::Camera) = nothing
 
 """
     close(cam)

@@ -484,7 +484,7 @@ function _start(cam)
 
     # Send specific start command, aborting acquisition in case of errors.
     try
-        _starthook(cam)
+        starthook(cam)
     catch err
         _readstream(cam, PHX_ABORT, C_NULL)
         _readstream(cam, PHX_UNLOCK, C_NULL)
@@ -496,21 +496,21 @@ end
 
 """
 
-`_starthook(cam)` is called to perform specific actions for starting
+`starthook(cam)` is called to perform specific actions for starting
 acquisition.  This function should return nothing but may throw exceptions to
 signal errors.
 
-See also: [`start`](@ref), [`_stophook`](@ref).
+See also: [`start`](@ref), [`stophook`](@ref).
 
 """
-_starthook(::Camera) = nothing
+starthook(::Camera) = nothing
 
 """
     stop(cam)
 
 stops acquisition by camera `cam` after current image.
 
-See also: [`abort`](@ref), [`start`](@ref), [`_stophook`](@ref).
+See also: [`abort`](@ref), [`start`](@ref), [`stophook`](@ref).
 
 """
 function stop(cam::Camera, cmd::Acq = PHX_STOP)
@@ -535,7 +535,7 @@ function stop(cam::Camera, cmd::Acq = PHX_STOP)
         end
         # Call specific stop command.
         try
-            _stophook(cam)
+            stophook(cam)
         catch err
             rethrow(err)
         finally
@@ -559,11 +559,11 @@ abort(cam::Camera) = stop(cam, PHX_ABORT)
 
 """
 
-`_stophook(cam)` is called to perform specific actions for stopping
+`stophook(cam)` is called to perform specific actions for stopping
 acquisition.  This function should return nothing but may throw exceptions to
 signal errors.
 
-See also: [`stop`](@ref), [`_starthook`](@ref).
+See also: [`stop`](@ref), [`starthook`](@ref).
 
 """
-_stophook(::Camera) = nothing
+stophook(::Camera) = nothing

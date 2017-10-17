@@ -144,7 +144,7 @@ const IS_STOPPED                      = RegisterValue{Void,Unreachable}(0x100022
 struct MikrotronMC408xModel <: CameraModel; end
 
 # Initialize the camera after board is open.
-function _openhook(cam::Camera{MikrotronMC408xModel})
+function openhook(cam::Camera{MikrotronMC408xModel})
 
     # Sanity checks.
     assert_coaxpress(cam)
@@ -322,10 +322,10 @@ function setsourceregion!(cam::Camera{MikrotronMC408xModel},
     nothing
 end
 
-_starthook(cam::Camera{MikrotronMC408xModel}) =
+starthook(cam::Camera{MikrotronMC408xModel}) =
     send(cam, ACQUISITION_START)
 
-_stophook(cam::Camera{MikrotronMC408xModel}) =
+stophook(cam::Camera{MikrotronMC408xModel}) =
     send(cam, ACQUISITION_STOP)
 
 
@@ -708,7 +708,7 @@ function setparam!(cam::Camera{MikrotronMC408xModel},
         end
     end
     printerror(errmode) # restore previous mode
-    _check(status)
+    checkstatus(status)
 end
 
 end # module

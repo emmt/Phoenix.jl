@@ -152,7 +152,7 @@ function _destroy(cam::Camera)
             # exceptions).
             _readstream(cam, PHX_ABORT, C_NULL)
             _readstream(cam, PHX_UNLOCK, C_NULL)
-            _stophook(cam)
+            stophook(cam)
         end
         ref = Ref(cam.handle)
         if cam.state > 0

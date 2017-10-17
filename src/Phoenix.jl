@@ -104,7 +104,7 @@ import
     ..RegisterAddress,
     ..RegisterCommand,
     ..RegisterString,
-    .._check,
+    ..checkstatus,
     ..getparam,
     .._getparam,
     ..resolve,
@@ -142,9 +142,9 @@ import
     ..geterrormessage,
     ..geterrorsymbol,
     ..printerror,
-    .._openhook,
-    .._starthook,
-    .._stophook
+    ..openhook,
+    ..starthook,
+    ..stophook
 
 export
     AccessMode,
@@ -185,7 +185,7 @@ export
     RegisterAddress,
     RegisterCommand,
     RegisterString,
-    _check,
+    checkstatus,
     getparam,
     _getparam,
     resolve,
@@ -223,9 +223,9 @@ export
     geterrormessage,
     geterrorsymbol,
     printerror,
-    _openhook,
-    _starthook,
-    _stophook
+    openhook,
+    starthook,
+    stophook
 
 end # module Phoenix.Development
 
