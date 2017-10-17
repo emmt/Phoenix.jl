@@ -18,23 +18,7 @@ importall ScientificCameras
 import ScientificCameras: ScientificCamera, ROI
 using ScientificCameras.PixelFormats
 using Phoenix
-
-# FIXME: make a sub-module for that (like PixelFormats in ScientificCameras)
-import Phoenix: Camera, CameraModel,
-    Readable, Writable, ReadOnly, ReadWrite, WriteOnly, Unreachable,
-    RegisterValue, RegisterString, RegisterCommand,
-    RegisterEnum, RegisterAddress, ParamValue,
-    capture_format_bits,
-    assert_coaxpress,
-    is_coaxpress,
-    capture_format,
-    printerror,
-    _check,
-    _getparam, getparam,
-    _setparam!, setparam!,
-    _openhook,
-    _starthook,
-    _stophook
+using Phoenix.Development
 
 #
 # CoaXPress camera constants for a Mikrotron MC408x camera.  These values have
