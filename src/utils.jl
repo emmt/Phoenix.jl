@@ -49,7 +49,7 @@ const _DST_FORMATS = Dict(PHX_DST_FORMAT_Y8   => Monochrome{8},
                           PHX_DST_FORMAT_Y32  => Monochrome{32},
                           PHX_DST_FORMAT_Y36  => Monochrome{36},
                           PHX_DST_FORMAT_2Y12 => Monochrome{24},
-                          PHX_DST_FORMAT_BAY8  => BayerFormat{ 8},
+                          PHX_DST_FORMAT_BAY8  => BayerFormat{8},
                           PHX_DST_FORMAT_BAY10 => BayerFormat{10},
                           PHX_DST_FORMAT_BAY12 => BayerFormat{12},
                           PHX_DST_FORMAT_BAY14 => BayerFormat{14},
@@ -73,6 +73,95 @@ const _DST_FORMATS = Dict(PHX_DST_FORMAT_Y8   => Monochrome{8},
                           PHX_DST_FORMAT_XRGB32 => XRGB{32},
                           PHX_DST_FORMAT_YUV422 => YUV422)
 
+const CAPTURE_FORMATS = Union{Monochrome{8},
+                              Monochrome{10},
+                              Monochrome{12},
+                              Monochrome{14},
+                              Monochrome{16},
+                              Monochrome{32},
+                              Monochrome{36},
+                              Monochrome{24},
+                              BayerFormat{8},
+                              BayerFormat{10},
+                              BayerFormat{12},
+                              BayerFormat{14},
+                              BayerFormat{16},
+                              RGB{15},
+                              RGB{16},
+                              RGB{24},
+                              RGB{32},
+                              RGB{36},
+                              RGB{48},
+                              BGR{15},
+                              BGR{16},
+                              BGR{24},
+                              BGR{32},
+                              BGR{36},
+                              BGR{48},
+                              BGRX{32},
+                              RGBX{32},
+                              XBGR{32},
+                              XRGB{32},
+                              YUV422}
+
+"""
+
+    capture_format(fmt) -> pix
+
+yields the pixel format corresponding to the destination buffer pixel format
+`fmt`, and conversely:
+
+    capture_format(pix) -> fmt
+
+For instance:
+
+    capture_format(PHX_DST_FORMAT_Y8) -> Monochrome{8}
+    capture_format(Monochrome{8}) -> PHX_DST_FORMAT_Y8
+
+
+See also: [`best_capture_format`](@ref), [`capture_format_bits`](@ref).
+
+"""
+function capture_format(fmt::Integer)
+    if haskey(_DST_FORMATS, fmt)
+        return getindex(_DST_FORMATS, fmt)
+    end
+    throw(ArgumentError("unknown capture pixel format"))
+end
+
+capture_format(::Type{T}) where {T<:Monochrome{8}} = PHX_DST_FORMAT_Y8
+capture_format(::Type{T}) where {T<:Monochrome{10}} = PHX_DST_FORMAT_Y10
+capture_format(::Type{T}) where {T<:Monochrome{12}} = PHX_DST_FORMAT_Y12
+# FIXME: PHX_DST_FORMAT_Y12B
+capture_format(::Type{T}) where {T<:Monochrome{14}} = PHX_DST_FORMAT_Y14
+capture_format(::Type{T}) where {T<:Monochrome{16}} = PHX_DST_FORMAT_Y16
+capture_format(::Type{T}) where {T<:Monochrome{32}} = PHX_DST_FORMAT_Y32
+capture_format(::Type{T}) where {T<:Monochrome{36}} = PHX_DST_FORMAT_Y36
+capture_format(::Type{T}) where {T<:Monochrome{24}} = PHX_DST_FORMAT_2Y12
+capture_format(::Type{T}) where {T<:BayerFormat{8}} = PHX_DST_FORMAT_BAY8
+capture_format(::Type{T}) where {T<:BayerFormat{10}} = PHX_DST_FORMAT_BAY10
+capture_format(::Type{T}) where {T<:BayerFormat{12}} = PHX_DST_FORMAT_BAY12
+capture_format(::Type{T}) where {T<:BayerFormat{14}} = PHX_DST_FORMAT_BAY14
+capture_format(::Type{T}) where {T<:BayerFormat{16}} = PHX_DST_FORMAT_BAY16
+capture_format(::Type{T}) where {T<:RGB{15}} = PHX_DST_FORMAT_RGB15
+capture_format(::Type{T}) where {T<:RGB{16}} = PHX_DST_FORMAT_RGB16
+capture_format(::Type{T}) where {T<:RGB{24}} = PHX_DST_FORMAT_RGB24
+capture_format(::Type{T}) where {T<:RGB{32}} = PHX_DST_FORMAT_RGB32
+capture_format(::Type{T}) where {T<:RGB{36}} = PHX_DST_FORMAT_RGB36
+capture_format(::Type{T}) where {T<:RGB{48}} = PHX_DST_FORMAT_RGB48
+capture_format(::Type{T}) where {T<:BGR{15}} = PHX_DST_FORMAT_BGR15
+capture_format(::Type{T}) where {T<:BGR{16}} = PHX_DST_FORMAT_BGR16
+capture_format(::Type{T}) where {T<:BGR{24}} = PHX_DST_FORMAT_BGR24
+capture_format(::Type{T}) where {T<:BGR{32}} = PHX_DST_FORMAT_BGR32
+capture_format(::Type{T}) where {T<:BGR{36}} = PHX_DST_FORMAT_BGR36
+capture_format(::Type{T}) where {T<:BGR{48}} = PHX_DST_FORMAT_BGR48
+capture_format(::Type{T}) where {T<:BGRX{32}} = PHX_DST_FORMAT_BGRX32
+capture_format(::Type{T}) where {T<:RGBX{32}} = PHX_DST_FORMAT_RGBX32
+# FIXME: PHX_DST_FORMAT_RRGGBB8
+capture_format(::Type{T}) where {T<:XBGR{32}} = PHX_DST_FORMAT_XBGR32
+capture_format(::Type{T}) where {T<:XRGB{32}} = PHX_DST_FORMAT_XRGB32
+capture_format(::Type{T}) where {T<:YUV422} = PHX_DST_FORMAT_YUV422
+
 """
 
 `capture_format_bits(fmt)` yields the number of bits per pixel for the
@@ -81,9 +170,9 @@ destination buffer pixel format `fmt`, *e.g.* `PHX_DST_FORMAT_Y8`.
 See also: [`best_capture_format`](@ref).
 
 """
-capture_format_bits(format::Integer) :: Int =
-    (haskey(_DST_FORMATS, format) ?
-     bitsperpixel(getindex(_DST_FORMATS, format)) : -1)
+capture_format_bits(fmt::Integer) :: Int =
+    (haskey(_DST_FORMATS, fmt) ?
+     bitsperpixel(getindex(_DST_FORMATS, fmt)) : -1)
 
 """
 
@@ -160,7 +249,8 @@ An alternative (without the checking of embedded NUL characters) is:
     push!(convert(Vector{UInt8}, str), convert(UInt8, 0))
 
 """
-function cstring(str::AbstractString, len::Integer = length(str)) :: Array{UInt8}
+function cstring(str::AbstractString,
+                 len::Integer = length(str)) :: Array{UInt8}
     buf = Array{UInt8}(len + 1)
     m = min(length(str), len)
     @inbounds for i in 1:m
