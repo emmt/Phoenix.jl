@@ -161,6 +161,8 @@ capture_format(::Type{T}) where {T<:RGBX{32}} = PHX_DST_FORMAT_RGBX32
 capture_format(::Type{T}) where {T<:XBGR{32}} = PHX_DST_FORMAT_XBGR32
 capture_format(::Type{T}) where {T<:XRGB{32}} = PHX_DST_FORMAT_XRGB32
 capture_format(::Type{T}) where {T<:YUV422} = PHX_DST_FORMAT_YUV422
+capture_format(::Type{T}) where {T<:PixelFormat} = ParamValue(0)
+
 
 """
 
