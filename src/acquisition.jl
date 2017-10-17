@@ -240,17 +240,6 @@ end
 #        `num + skip` images (PHX_ACQ_NUM_IMAGES/PHX_ACQ_NUM_BUFFERS) into
 #        `num` buffers with PHX_ACQ_BLOCKING and PHX_ACQ_CONTINUOUS both set to
 #        PHX_DISABLE
-
-"""
-
-- `skip` is the number of initial image buffers to skip (*e.g.* to get rid of
-  *dirty* images);
-
-- `drop` indicates whether to get rid of the oldest image buffers when there
-  are more than one pending image buffers;
-
-
-"""
 function _read(cam::Camera, ::Type{T}, num::Int, skip::Int) where {T}
     # Check arguments.
     if cam.state != 1
@@ -317,27 +306,31 @@ function _read(cam::Camera, ::Type{T}, num::Int, skip::Int) where {T}
             count += 1
             perms[count] = mod(index + count - 2, num) + 1
             if count ≥ num
-                abort(cam)
                 break
             end
         end
     end
 
+    # Stop immediately.
+    abort(cam)
+
     # Return re-ordered images.
     return [cam.imgs[perms[i]] for i in 1:count]
 end
 
-
+# Extend method.
 function read(cam::Camera, ::Type{T}, num::Int; skip::Integer = 0) where {T}
     _read(cam, T, num, convert(Int, skip))
 end
 
-function read(cam::Camera, num::Int; kwds...)
-    T, format = best_capture_format(cam)
-    cam[PHX_DST_FORMAT] = format
-    read(cam, T, num; kwds...)
+# Extend method.
+function getcapturebitstype(cam::Camera)
+    bufpix = capture_format(cam[PHX_DST_FORMAT])
+    T = equivalentbitstype(bufpix)
+    return (T == Void ? UInt8 : T)
 end
 
+# Extend method.
 release(cam::Camera) =
     readstream(cam, PHX_BUFFER_RELEASE, C_NULL)
 
@@ -441,31 +434,7 @@ function _setbuffers!(cam::Camera, ::Type{T}, nbufs::Int) where {T}
     return cam
 end
 
-"""
-
-    start(cam, T, nbufs=2) -> imgs
-
-starts acquisition of images by the camera `cam`.  This method allocates
-`nbufs` image buffers of pixel type `T` for the acquisition and returns these
-buffers as a vector of 2D arrays of element type `T`.
-
-Some methods can be used to retrieve information about the image buffers:
-- `lenght(cam)` yields the number of image buffers;
-- `eltype(cam)` yields the pixel type of the image buffers;
-- `cam[i]`, with `i` integer, yields the `i`-th image buffer (a 2D array);
-
-See also: [`stop`](@ref).
-
-"""
-start(cam::Camera, ::Type{T}, nbufs::Integer) where {T} =
-    start(cam, T, convert(Int, nbufs))
-
-function start(cam::Camera, nbufs::Integer)
-    T, format = best_capture_format(cam)
-    cam[PHX_DST_FORMAT] = format
-    start(cam, T, nbufs)
-end
-
+# Extend method.
 function start(cam::Camera, ::Type{T}, nbufs::Int = 2) where {T}
     # Check arguments.
     if cam.state != 1
