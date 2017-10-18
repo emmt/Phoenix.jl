@@ -247,6 +247,45 @@ end
 
 @doc @doc(setparam!) _setparam!
 
+"""
+    flushcache(cam)
+
+makes sure that cached frame grabber parameters are effectively written to the
+hardware.
+
+"""
+function flushcache(cam::Camera)
+    cam[Param{Ptr{Void},WriteOnly}(PHX_DUMMY_PARAM|PHX_CACHE_FLUSH)] = C_NULL
+    nothing
+end
+
+"""
+    saveconfig(cam, name, what = PHX_SAVE_ALL)
+
+saves the actual configuration of camera `cam` in file `name`.  Optional
+argument `what` specifies which parameters to save, it can be a combination
+(*i.e.* bitwise or) of:
+
+- `PHX_SAVE_CAM` to save the camera specific parameters.  These describe the
+  camera.
+
+- `PHX_SAVE_SYS` to save the system specific parameters.  These describe how
+  the camera is connected to the Active Silicon board.
+
+- `PHX_SAVE_APP` to save the application specific parameters.
+
+- `PHX_SAVE_ALL` to save all three of the above types of parameters.
+
+"""
+function saveconfig(cam::Camera, name::AbstractString,
+                    what::Integer = PHX_SAVE_ALL)
+    flushcache(cam)
+    status = ccall(_PHX_Action, Status,
+                   (Handle, Action, ActionParam, Ptr{Void}),
+                   cam.handle, PHX_CONFIG_SAVE, what, cstring(name))
+    checkstatus(status)
+end
+
 #------------------------------------------------------------------------------
 # Reading/Writing CoaXPress Registers
 # ===================================
@@ -537,13 +576,3 @@ function _writecontrol(handle::Handle, src::ControlPort, param, buf,
           (Handle, UInt32, Ptr{Void}, Ptr{Void}, Ptr{UInt32}, UInt32),
           handle, src.port, param, buf, num, timeout)
 end
-
-"""
-    _action(cam, act, prm, ptr) -> status
-
-performs the specified action.
-
-"""
-_action(cam::Camera, act::Action, prm::ActionParam, ptr::Ptr{Void}) =
-    ccall(_PHX_Action, Status, (Handle, Action, ActionParam, Ptr{Void}),
-          cam.handle, act, prm, ptr)
