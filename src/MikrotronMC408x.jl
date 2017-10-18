@@ -662,14 +662,14 @@ function setifneeded!(cam::Camera{MikrotronMC408xModel},
 end
 
 function setparam!(cam::Camera{MikrotronMC408xModel},
-                   reg::RegisterValue{T,A}, val) where {T<:Real,A<:Writable}
-    setparam!(cam, reg, convert(T, val))
+                   key::RegisterValue{T,A}, val) where {T<:Real,A<:Writable}
+    setparam!(cam, key, convert(T, val))
 end
 
 # This overloading of the method is to treat specifically certain problematic
 # parameters such as the pixel format.
 function setparam!(cam::Camera{MikrotronMC408xModel},
-                   reg::RegisterValue{T,A}, val::T) where {T<:Real,A<:Writable}
+                   key::RegisterValue{T,A}, val::T) where {T<:Real,A<:Writable}
     # Unfortunately, setting some parameters (as the pixel format or the gamma
     # correction) returns an error with an absurd code
     # (`PHX_ERROR_MALLOC_FAILED`) which, in practice can be ignored as, after a
@@ -683,23 +683,24 @@ function setparam!(cam::Camera{MikrotronMC408xModel},
     # messages is disabled during this process.
     errmode = printerror(false) # temporarily switch reporting of errors
     buf = Ref{T}(val)
-    status = _setparam!(cam, reg, buf)
+    status = _setparam!(cam, key, buf)
     if status != PHX_OK
         retry = false
-        if reg.addr == PIXEL_FORMAT.addr && (val == PIXEL_FORMAT_MONO8     ||
+        if key.addr == PIXEL_FORMAT.addr && (val == PIXEL_FORMAT_MONO8     ||
                                              val == PIXEL_FORMAT_MONO10    ||
                                              val == PIXEL_FORMAT_BAYERGR8  ||
                                              val == PIXEL_FORMAT_BAYERGR10 )
             for i in 1:3
-                if _getparam(cam, reg, buf) == PHX_OK && buf[] == val
+                if _getparam(cam, key, buf) == PHX_OK && buf[] == val
                     return nothing
                 end
             end
             printerror(errmode) # restore previous mode
             error("failed to change pixel format to 0x", hex(val))
-        elseif reg.addr == GAMMA && (GAMMA_MIN ≤ gamma ≤ GAMMA_MAX)
+        elseif key.addr == GAMMA && (GAMMA_MIN ≤ gamma ≤ GAMMA_MAX)
             for i in 1:3
-                if _getparam(cam, reg, buf) == PHX_OK && abs(buf[] - val) ≤ GAMMA_INCREMENT
+                if (_getparam(cam, key, buf) == PHX_OK &&
+                    abs(buf[] - val) ≤ GAMMA_INCREMENT)
                     return nothing
                 end
             end
