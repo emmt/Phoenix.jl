@@ -91,57 +91,60 @@ See also: [`setparam!`](@ref), [`isreadable`](@ref).
 
 """
 function getparam(cam::Camera,
-                  param::Param{T,A}) :: T where {T<:Integer,A<:Readable}
-    ref = Ref{T}()
-    checkstatus(_getparam(cam, param, ref))
-    return ref[]
+                  key::Param{T,A}) :: T where {T<:Integer,A<:Readable}
+    buf = Ref{T}()
+    checkstatus(_getparam(cam, key, buf))
+    return buf[]
 end
 
 function getparam(cam::Camera,
-                  param::Param{String,A}) :: String where {A<:Readable}
-    ref = Ref{Ptr{UInt8}}()
-    checkstatus(_getparam(cam, param, ref))
-    return (ref[] == C_NULL ? "" : unsafe_string(ref[]))
+                  key::Param{String,A}) :: String where {A<:Readable}
+    buf = Ref{Ptr{UInt8}}()
+    checkstatus(_getparam(cam, key, buf))
+    return (buf[] == C_NULL ? "" : unsafe_string(buf[]))
 end
 
 function getparam(cam::Camera,
-                  param::Param{Ptr{Void},A}) :: Ptr{Void} where {A<:Readable}
-    ref = Ref{Ptr{Void}}()
-    checkstatus(_getparam(cam, param, ref))
-    return ref[]
+                  key::Param{Ptr{Void},A}) :: Ptr{Void} where {A<:Readable}
+    buf = Ref{Ptr{Void}}()
+    checkstatus(_getparam(cam, key, buf))
+    return buf[]
 end
 
-getparam(cam::Camera, param::Param) =
-    error("unreadable parameter or undetermined parameter type")
-
 function getparam(cam::Camera,
-                  reg::RegisterString{N,A}) where {N,A<:Readable}
+                  key::RegisterString{N,A}) where {N,A<:Readable}
     buf = Array{UInt8}(N)
-    checkstatus(_readregister(cam, reg, buf, N))
+    checkstatus(_readregister(cam, key, buf, N))
     return unsafe_string(pointer(buf))
 end
 
 function getparam(cam::Camera,
-                  reg::RegisterValue{T,A}) where {T<:Real,A<:Readable}
+                  key::RegisterValue{T,A}) where {T<:Real,A<:Readable}
     buf = Ref{T}()
-    checkstatus(_getparam(cam, reg, buf))
+    checkstatus(_getparam(cam, key, buf))
     return buf[]
 end
 
-getparam(cam::Camera, reg::RegisterAddress{T,A}) where {T,A<:Readable} =
-    getparam(cam, resolve(cam, reg))
+getparam(cam::Camera, key::RegisterAddress{T,A}) where {T,A<:Readable} =
+    getparam(cam, resolve(cam, key))
 
-getparam(cam::Camera, reg::Register) =
+getparam(cam::Camera, key::Param) =
+    error("unreadable parameter or undetermined parameter type")
+
+getparam(cam::Camera, key::Register) =
     error("attempt to get an unreadable CoaXPress parameter")
 
-_getparam(cam::Camera, param::Param{T,A}, buf::Union{Ptr,Ref}) where {T,A<:Readable} =
+function _getparam(cam::Camera,
+                   key::Param{T,A},
+                   buf::Union{Ptr,Ref}) where {T,A<:Readable}
     ccall(_PHX_ParameterGet, Status, (Handle, Cuint, Ptr{Void}),
-          cam.handle, param.ident, buf)
+          cam.handle, key.ident, buf)
+end
 
 function _getparam(cam::Camera,
-                   reg::RegisterValue{T,A},
+                   key::RegisterValue{T,A},
                    buf::Ref{T}) where {T<:Real,A<:Readable}
-    status = _readregister(cam, reg, buf, sizeof(T))
+    status = _readregister(cam, key, buf, sizeof(T))
     if cam.swap
         buf[] = bswap(buf[])
     end
@@ -188,61 +191,82 @@ Beware that this low-level version does not check its arguments.
 See also: [`getparam`](@ref), [`iswritable`](@ref).
 
 """
-setparam!(cam::Camera, param::Param{T,A}, val::Integer) where {T<:Integer,A<:Writable} =
-    checkstatus(_setparam!(cam, param, Ref{T}(val)))
-
-setparam!(cam::Camera, param::Param{String,A}, val::AbstractString) where {A<:Writable} =
-    checkstatus(_setparam!(cam, param, Ref(pointer(cstring(val)))))
-
-setparam!(cam::Camera, param::Param, val) =
-    error("unwritable parameter or undetermined parameter type")
-
 function setparam!(cam::Camera,
-                   param::Param{Ptr{T},A},
-                   val::Union{Vector{T},Ptr{T},Ref{T}}) where {T,A<:Writable}
-    checkstatus(_setparam!(cam, param, val))
+                   key::Param{T,A},
+                   val::Integer) where {T<:Integer,A<:Writable}
+    checkstatus(_setparam!(cam, key, Ref{T}(val)))
 end
 
 function setparam!(cam::Camera,
-                   param::Param{Ptr{Void},A},
-                   val::Union{Vector,Ptr,Ref}) where {A<:Writable}
-    checkstatus(_setparam!(cam, param, val))
+                   key::Param{String,A},
+                   str::AbstractString) where {A<:Writable}
+    checkstatus(_setparam!(cam, key, Ref(pointer(cstring(str)))))
 end
 
 function setparam!(cam::Camera,
-                   reg::RegisterString{N,A},
+                   key::Param{Ptr{T},A},
+                   buf::Union{Vector{T},Ptr{T},Ref{T}}) where {T,A<:Writable}
+    checkstatus(_setparam!(cam, key, buf))
+end
+
+function setparam!(cam::Camera,
+                   key::Param{Ptr{Void},A},
+                   buf::Union{Vector,Ptr,Ref}) where {A<:Writable}
+    checkstatus(_setparam!(cam, key, buf))
+end
+
+function setparam!(cam::Camera,
+                   key::RegisterString{N,A},
                    str::AbstractString) where {N,A<:Writable}
     buf = Array{UInt8}(N)
-    m = min(length(str), N)
-    @inbounds for i in 1:m
-        (c = str[i]) != '\0' || error("string must not have embedded NUL characters")
+    i = 0
+    @inbounds for c in str
+        if i ≥ N
+            break
+        end
+        c != '\0' || error("string must not have embedded NUL characters")
+        i += 1
         buf[i] = c
     end
-    @inbounds for i in m+1:N
+    @inbounds while i < N
+        i += 1
         buf[i] = zero(UInt8)
     end
-    checkstatus(_writeregister(cam, reg, buf, N))
+    checkstatus(_writeregister(cam, key, buf, N))
 end
 
-setparam!(cam::Camera, reg::RegisterValue{T,A}, val) where {T<:Real,A<:Writable} =
-    checkstatus(_setparam!(cam, reg, val))
+function setparam!(cam::Camera,
+                   key::RegisterValue{T,A},
+                   val::Real) where {T<:Real,A<:Writable}
+    checkstatus(_setparam!(cam, key, Ref{T}(val)))
+end
 
-setparam!(cam::Camera, reg::RegisterAddress{T,A}, val) where {T,A<:Writable} =
-    setparam!(cam, resolve(cam, reg), val)
+function setparam!(cam::Camera,
+                   key::RegisterAddress{T,A},
+                   val) where {T,A<:Writable}
+    setparam!(cam, resolve(cam, key), val)
+end
 
-setparam!(cam::Camera, reg::Register, val) =
+setparam!(cam::Camera, key::Param, val) =
+    error("unwritable parameter or undetermined parameter type")
+
+setparam!(cam::Camera, key::Register, val) =
     error("attempt to set an unwritable CoaXPress parameter")
 
-_setparam!(cam::Camera, param::Param{T,A}, buf::Union{Ptr,Ref,Vector}) where {T,A<:Writable} =
+function _setparam!(cam::Camera,
+                    key::Param{T,A},
+                    buf::Union{Ptr,Ref,Vector}) where {T,A<:Writable}
     ccall(_PHX_ParameterSet, Status, (Handle, Cuint, Ptr{Void}),
-          cam.handle, param.ident, buf)
+          cam.handle, key.ident, buf)
+end
 
 function _setparam!(cam::Camera,
-                    reg::RegisterValue{T,A},
-                    val) where {T<:Real,A<:Writable}
-    tmp = convert(T, val) :: T
-    buf = Ref{T}(cam.swap ? bswap(tmp) : tmp)
-    _writeregister(cam, reg, buf, sizeof(T))
+                    key::RegisterValue{T,A},
+                    buf::Ref{T}) where {T<:Real,A<:Writable}
+    if cam.swap
+        buf[] = bswap(buf[])
+    end
+    _writeregister(cam, key, buf, sizeof(T))
 end
 
 @doc @doc(setparam!) _setparam!
