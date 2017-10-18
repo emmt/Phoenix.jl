@@ -310,26 +310,6 @@ function __init__()
     _errorhandler_ptr[] = cfunction(_errorhandler, Void,
                                     (Ptr{Cchar}, Status, Ptr{Cchar}))
     _callback_ptr[] = cfunction(_callback, Void, (Handle, UInt32, Ptr{Void}))
-    const name = (is_linux() ? "LD_LIBRARY_PATH" :
-                  is_apple() ? "DYLD_LIBRARY_PATH" : "")
-    libdir = dirname(realpath(_PHXLIB))
-    if name != ""
-        found = false
-        for dir in split(get(Base.ENV, name, ""), ":", keep=false)
-            if isdir(dir) && realpath(dir) == libdir
-                found = true
-                break
-            end
-        end
-        if ! found
-            print_with_color(:yellow, STDERR,
-                             "\n",
-                             "WARNING: Directory of '$_PHXLIB'\n",
-                             "         is not in your environment variable $name.\n",
-                             "         You may have to call Julia as:\n\n",
-                             "             $name='$libdir' julia\n\n")
-        end
-    end
 end
 
 # Manage to load the dynamic library and its symbols with appropriate flags.

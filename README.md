@@ -81,26 +81,58 @@ and do:
 
 ## Installation
 
+### Installation of the frame grabber libraries
+
 To be able to use this module, you must have installed ActiveSilicon Phoenix
-libraries and the module [`IPC.jl`](https://github.com/emmt/IPC.jl).
+libraries and the module [`IPC.jl`](https://github.com/emmt/IPC.jl).  Make sure
+that the directory (usually `/usr/local/activesilicon/lib64`) where are
+installed the ActiveSilicon Phoenix dynamic libraries is part of the search
+path of the bynamic loader.  This can be done by setting the environment
+variable `LD_LIBRARY_PATH` on Linux or `"DYLD_LIBRARY_PATH` on MacOSX to
+contain this directory, for instance:
+
+```sh
+export LD_LIBRARY_PATH=/usr/local/activesilicon/lib64
+```
+
+assuming you are using Bourne-like shell.  Another possibility, is to configure
+the dynamic loader at the system level to find the ActiveSilicon Phoenix
+dynamic libraries.  On Linux this can be done by:
+
+```sh
+sudo -i
+echo "/usr/local/activesilicon/lib64" >/etc/ld.so.conf.d/activesilicon.conf
+ldconfig
+```
+
+This only has to be done once and will work for all users.
+
+
+### Installation of the Julia package
 
 `Phoenix.jl` is not yet an [official Julia package](https://pkg.julialang.org/)
 so you have to clone the repository to install the module:
 
-    Pkg.clone("https://github.com/emmt/Phoenix.jl.git")
-    Pkg.build("Phoenix")
+```julia
+Pkg.clone("https://github.com/emmt/Phoenix.jl.git")
+Pkg.build("Phoenix")
+```
 
 Later, it is sufficient to do:
 
-    Pkg.update("Phoenix")
-    Pkg.build("Phoenix")
+```julia
+Pkg.update("Phoenix")
+Pkg.build("Phoenix")
+```
 
 to pull the latest version.  If you have `Phoenix.jl` repository not managed at
 all by Julia's package manager, updating is a matter of:
 
-    cd "$PHOENIX/deps"
-    git pull
-    make
+```sh
+cd "$PHOENIX/deps"
+git pull
+make
+```
 
 assuming `$PHOENIX` is the path to the top level directory of the `Phoenix.jl`
 repository.
@@ -110,9 +142,11 @@ installed in the usual directory `/usr/local/activesilicon`.  If this is not
 the case, to update the code and build the dependencies, you'll have to do
 something like:
 
-    cd "$PHOENIX/deps"
-    git pull
-    make PHX_DIR="$INSTALLDIR"
+```sh
+cd "$PHOENIX/deps"
+git pull
+make PHX_DIR="$INSTALLDIR"
+```
 
 where `$INSTALLDIR` is the path where ActiveSilicon libraries have been
 installed.
