@@ -11,36 +11,42 @@ This module provides a Julia interface to ActiveSilicon Phoenix frame grabber.
 
 ## Usage
 
-The [`Phoenix`]((https://github.com/emmt/Phoenix.jl) package complies with the
+The [`Phoenix`](https://github.com/emmt/Phoenix.jl) package complies with the
 [`ScientificCameras`](https://github.com/emmt/ScientificCameras.jl) interface.
 This interface is detailled there but some short examples are provided in what
 follows.
 
 The simplest example of sequential acqisition of `n` images is:
 
-    using Phoenix
-    cam = open(Phoenix.MikrotronMC408xModel)
-    imgs = read(cam, n)
-    close(cam) # optional
+```julia
+using Phoenix
+cam = open(Phoenix.MikrotronMC408xModel)
+imgs = read(cam, n)
+close(cam) # optional
+```
 
 The simplest example of continuous acquisition (using 4 image buffers) and
 processing is:
 
-    using Phoenix
-    cam = open(Phoenix.MikrotronMC408xModel)
-    bufs = start(cam, 4)
-    for number in 1:100
-        index = wait(cam) # wait for next frame
-        buf = bufs[index] # get image buffer
-        ... # process the image buffer
-        release(cam)
-    end
-    abort(cam)
-    close(cam) # optional
+```julia
+using Phoenix
+cam = open(Phoenix.MikrotronMC408xModel)
+bufs = start(cam, 4)
+for number in 1:100
+    index = wait(cam) # wait for next frame
+    buf = bufs[index] # get image buffer
+    ... # process the image buffer
+    release(cam)
+end
+abort(cam)
+close(cam) # optional
+```
 
 Note that:
 
-    using Phoenix
+```julia
+using Phoenix
+```
 
 imports `Phoenix` module to directly access exported methods notably all public
 methods from the package
@@ -67,7 +73,9 @@ interface specified in the
 To figure out the type of connected camera, you may use the
 `Phoenix.GenericCameraModel` model and the `summary` method:
 
-    summary(open(Phoenix.GenericCameraModel))
+```julia
+summary(open(Phoenix.GenericCameraModel))
+```
 
 Note that you may specify the configuration file, board number, *etc.* as
 keywords to the `open` method above.
@@ -76,8 +84,9 @@ keywords to the `open` method above.
 To figure out which camera models are implemented, you exploit introspection
 and do:
 
-    subtypes(Phoenix.CameraModel)
-
+```julia
+subtypes(Phoenix.CameraModel)
+```
 
 ## Installation
 
