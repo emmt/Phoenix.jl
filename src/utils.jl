@@ -254,12 +254,17 @@ An alternative (without the checking of embedded NUL characters) is:
 function cstring(str::AbstractString,
                  len::Integer = length(str)) :: Array{UInt8}
     buf = Array{UInt8}(len + 1)
-    m = min(length(str), len)
-    @inbounds for i in 1:m
-        (c = str[i]) != '\0' || error("string must not have embedded NUL characters")
+    i = 0
+    @inbounds for c in str
+        if i ≥ len
+            break
+        end
+        c != '\0' || error("string must not have embedded NUL characters")
+        i += 1
         buf[i] = c
     end
-    @inbounds for i in m+1:len+1
+    @inbounds while i ≤ len
+        i += 1
         buf[i] = zero(UInt8)
     end
     return buf
