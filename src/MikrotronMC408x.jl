@@ -18,7 +18,7 @@ importall ScientificCameras
 import ScientificCameras: ScientificCamera, ROI
 using ScientificCameras.PixelFormats
 using Phoenix
-using Phoenix.Development
+importall Phoenix.Development
 
 #
 # CoaXPress camera constants for a Mikrotron MC408x camera.  These values have
@@ -242,29 +242,29 @@ which is one of `PIXEL_FORMAT_MONO8`, `PIXEL_FORMAT_MONO10`,
 `PIXEL_FORMAT_BAYERGR8` or `PIXEL_FORMAT_BAYERGR10`.
 
 """
-function equivalentformat(pixelformat::Integer)
-    local srcformat::ParamValue, srcdepth::ParamValue
-    local dstformat::ParamValue
-    if pixelformat == PIXEL_FORMAT_MONO8
-        srcformat = PHX_CAM_SRC_MONO
-        srcdepth  = 8
-        dstformat = PHX_DST_FORMAT_Y8
-    elseif pixelformat == PIXEL_FORMAT_MONO10
-        srcformat = PHX_CAM_SRC_MONO
-        srcdepth  = 10
-        dstformat = PHX_DST_FORMAT_Y10
-    elseif pixelformat == PIXEL_FORMAT_BAYERGR8
-        srcformat = PHX_CAM_SRC_BAY_RGGB
-        srcdepth  = 8
-        dstformat = PHX_DST_FORMAT_BAY8
-    elseif pixelformat == PIXEL_FORMAT_BAYERGR10
-        srcformat = PHX_CAM_SRC_BAY_RGGB
-        srcdepth  = 10
-        dstformat = PHX_DST_FORMAT_BAY10
+function equivalentformat(pixfmt::Integer)
+    local srcfmt::ParamValue, srcdepth::ParamValue
+    local dstfmt::ParamValue
+    if pixfmt == PIXEL_FORMAT_MONO8
+        srcfmt   = PHX_CAM_SRC_MONO
+        srcdepth = 8
+        dstfmt   = PHX_DST_FORMAT_Y8
+    elseif pixfmt == PIXEL_FORMAT_MONO10
+        srcfmt   = PHX_CAM_SRC_MONO
+        srcdepth = 10
+        dstfmt   = PHX_DST_FORMAT_Y10
+    elseif pixfmt == PIXEL_FORMAT_BAYERGR8
+        srcfmt   = PHX_CAM_SRC_BAY_RGGB
+        srcdepth = 8
+        dstfmt   = PHX_DST_FORMAT_BAY8
+    elseif pixfmt == PIXEL_FORMAT_BAYERGR10
+        srcfmt   = PHX_CAM_SRC_BAY_RGGB
+        srcdepth = 10
+        dstfmt   = PHX_DST_FORMAT_BAY10
     else
-        error("unknown pixel format 0x", hex(pixelformat))
+        error("unknown pixel format 0x", hex(pixfmt))
     end
-    return (srcformat, srcdepth, dstformat)
+    return (srcfmt, srcdepth, dstfmt)
 end
 
 equivalentformat(cam::Camera{MikrotronMC408xModel}) =
