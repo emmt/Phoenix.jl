@@ -329,23 +329,6 @@ stophook(cam::Camera{MikrotronMC408xModel}) =
     send(cam, ACQUISITION_STOP)
 
 
-"""
-    getdepth(pixelformat)
-
-yields the number of bits for the given pixel format of the MikrotronMC408x
-camera.
-
-"""
-getdepth(pixelformat::Integer) =
-    (pixelformat == PIXEL_FORMAT_MONO8 ||
-     pixelformat == PIXEL_FORMAT_BAYERGR8) ? 8 :
-     (pixelformat == PIXEL_FORMAT_MONO10 ||
-      pixelformat == PIXEL_FORMAT_BAYERGR10) ? 10 :
-      error("unknown pixel format")
-
-getdepth(cam::Camera{MikrotronMC408xModel}) =
-    getdepth(cam[PIXEL_FORMAT])
-
 # Extend method.
 getdecimation(cam::Camera{MikrotronMC408xModel}) =
     (Int(cam[DECIMATION_HORIZONTAL]), Int(cam[DECIMATION_VERTICAL]))
