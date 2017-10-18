@@ -252,7 +252,7 @@ function equivalentformat(pixfmt::Integer)
     elseif pixfmt == PIXEL_FORMAT_MONO10
         srcfmt   = PHX_CAM_SRC_MONO
         srcdepth = 10
-        dstfmt   = PHX_DST_FORMAT_Y10
+        dstfmt   = PHX_DST_FORMAT_Y16
     elseif pixfmt == PIXEL_FORMAT_BAYERGR8
         srcfmt   = PHX_CAM_SRC_BAY_RGGB
         srcdepth = 8
@@ -260,7 +260,7 @@ function equivalentformat(pixfmt::Integer)
     elseif pixfmt == PIXEL_FORMAT_BAYERGR10
         srcfmt   = PHX_CAM_SRC_BAY_RGGB
         srcdepth = 10
-        dstfmt   = PHX_DST_FORMAT_BAY10
+        dstfmt   = PHX_DST_FORMAT_BAY16
     else
         error("unknown pixel format 0x", hex(pixfmt))
     end
@@ -508,6 +508,24 @@ end
 function setpixelformat!(cam::Camera{MikrotronMC408xModel},
                          ::Type{C}, ::Type{B}) where {C <: PixelFormat,
                                                       B <: PixelFormat}
+    # Set the camera pixel format and the corresponding pixel format for
+    # captured image buffers.
+    setpixelformat!(cam, C)
+
+    # Check pixel format of captured images.
+    dstfmt = capture_format(B)
+    if dstfmt == zero(dstfmt)
+        throw(ArgumentError("unsupported pixel format of captured images"))
+    end
+    if cam[PHX_DST_FORMAT] != dstfmt
+        throw(ArgumentError("pixel format of captured images incompatible with camera pixel format"))
+    end
+    return nothing
+end
+
+# Extend method.
+function setpixelformat!(cam::Camera{MikrotronMC408xModel},
+                         ::Type{T}) where {T <: PixelFormat}
     # Check state.
     if cam.state != 1
         if cam.state == 0
@@ -519,17 +537,31 @@ function setpixelformat!(cam::Camera{MikrotronMC408xModel},
         end
     end
 
-    # Determine camera pixel format.
+    # Determine best matching formats.
     oldfmt = cam[PIXEL_FORMAT]
-    newfmt = oldfmt
+    newfmt = guesscamerapixelformat(oldfmt, T)
+    srccol, srcdepth, dstfmt = equivalentformat(newfmt)
+
+    # Apply the settings.
+    if newfmt != oldfmt
+        cam[PIXEL_FORMAT] = newfmt
+    end
+    cam[PHX_CAM_SRC_COL]   = srccol
+    cam[PHX_CAM_SRC_DEPTH] = srcdepth
+    cam[PHX_DST_FORMAT]    = dstfmt
+    return nothing
+end
+
+# Determine camera pixel format.
+function guesscamerapixelformat(oldfmt::Integer, C::PixelFormat)
     if C <: Monochrome
         if oldfmt != PIXEL_FORMAT_MONO8 && oldfmt != PIXEL_FORMAT_MONO10
             throw(ArgumentError("not a monochrome camera"))
         end
         if C == Monochrome{8}
-            newfmt = PIXEL_FORMAT_MONO8
+            return PIXEL_FORMAT_MONO8
         elseif C == Monochrome{10}
-            newfmt = PIXEL_FORMAT_MONO10
+            return PIXEL_FORMAT_MONO10
         elseif C != Monochrome
             throw(ArgumentError("unsupported number of bits per pixel"))
         end
@@ -540,39 +572,17 @@ function setpixelformat!(cam::Camera{MikrotronMC408xModel},
         if (C == ColorFormat{8} ||
             C == BayerFormat{8} ||
             C == BayerGRBG{8})
-            newfmt = PIXEL_FORMAT_BAYERGR8
+            return PIXEL_FORMAT_BAYERGR8
         elseif (C == ColorFormat{10} ||
                 C == BayerFormat{10} ||
                 C == BayerGRBG{10})
-            newfmt = PIXEL_FORMAT_BAYERGR10
+            return PIXEL_FORMAT_BAYERGR10
         elseif (C != ColorFormat &&
                 C != BayerFormat &&
                 C != BayerGRBG)
             throw(ArgumentError("unsupported number of bits per pixel or color format"))
         end
     end
-
-    # Determine pixel format of captured images.
-    dstfmt = capture_format(B)
-    if dstfmt == zero(dstfmt)
-        throw(ArgumentError("unsupported pixel format of captured images"))
-    end
-
-    # Apply the settings.
-    srccol, srcdepth, ignored = equivalentformat(newfmt)
-    if newfmt != oldfmt
-        cam[PIXEL_FORMAT] = newfmt
-    end
-    cam[PHX_CAM_SRC_COL]   = srccol
-    cam[PHX_CAM_SRC_DEPTH] = srcdepth
-    cam[PHX_DST_FORMAT]    = dstfmt
-    return nothing
-end
-
-# Extend method.
-function setpixelformat!(cam::Camera{MikrotronMC408xModel},
-                         ::Type{T}) where {T <: PixelFormat}
-    setpixelformat!(cam, T, T)
 end
 
 # Extend method.
