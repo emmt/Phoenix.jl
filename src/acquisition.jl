@@ -277,7 +277,7 @@ function _read(cam::Camera, ::Type{T}, num::Int, skip::Int) where {T}
     cam[PHX_EVENT_CONTEXT] = Ref(cam.context)
 
     # Allocate image buffers and instruct the frame grabber to use them.
-    _setbuffers!(cam, T, num)
+    _setbuffers!(cam, T, num + 1) # FIXME: hack to avoid loosing one frame
 
     # Timeout is 1 second plus the maximum time needed to acquire all images
     # plus 1 percent allowed drift.

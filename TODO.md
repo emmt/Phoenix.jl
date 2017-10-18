@@ -1,3 +1,11 @@
+- Fix hack in read() to avoid loosing one frame.
+
+- Use Phoenix frame grabber counters.
+
+- Cache settings (see benchmarking).
+
+- Use maximal transmission speed.
+
 - **DONE** Deal with corrupted first image.  Add an option to skip images in
   `read` if `skip > 0`, start at a given index (`PHX_ACQ_BUFFER_START`) and
   read `num + skip` images (`PHX_ACQ_NUM_IMAGES`) into `num` buffers with
@@ -6,15 +14,11 @@
 - **OBSOLETE** Use Julia package
   [`ColorTypes`](https://github.com/JuliaGraphics/ColorTypes.jl)
 
-- Use Phoenix frame grabber counters.
-
 - **FIXED** Last image not taken.
 
 - **DONE** Support subsampling or rebinning of pixels.
 
-- Cache settings (see benchmarking).
-
-- Automatically determine structure layout in `gencode.c`.
+- **DONE** Automatically determine structure layout in `gencode.c`.
 
 - **DONE** Simplify parameter definition:
 
