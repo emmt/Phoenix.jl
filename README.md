@@ -16,7 +16,7 @@ The [`Phoenix`](https://github.com/emmt/Phoenix.jl) package complies with the
 This interface is detailled there but some short examples are provided in what
 follows.
 
-The simplest example of sequential acqisition of `n` images is:
+The simplest example of acquisition of a sequence of `n` images is:
 
 ```julia
 using Phoenix
