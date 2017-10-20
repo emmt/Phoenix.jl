@@ -238,6 +238,12 @@ end
 function setparam!(cam::Camera,
                    key::RegisterValue{T,A},
                    val::Real) where {T<:Real,A<:Writable}
+    setparam!(cam, key, convert(T, val))
+end
+
+function setparam!(cam::Camera,
+                   key::RegisterValue{T,A},
+                   val::T) where {T<:Real,A<:Writable}
     checkstatus(_setparam!(cam, key, Ref{T}(val)))
 end
 

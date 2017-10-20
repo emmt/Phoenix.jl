@@ -19,7 +19,7 @@ module Phoenix
 # for the end-user.
 
 importall ScientificCameras
-import ScientificCameras: ScientificCamera
+import ScientificCameras: ScientificCamera, ROI
 using ScientificCameras.PixelFormats
 export
     PHXError,
@@ -31,13 +31,12 @@ export
     abort,
     wait,
     release,
-    getdecimation,
-    setdecimation!,
     getfullsize,
     getfullwidth,
     getfullheight,
     getroi,
     setroi!,
+    resetroi!,
     checkroi,
     getpixelformat,
     setpixelformat!,
