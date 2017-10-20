@@ -15,44 +15,18 @@
 module Phoenix
 
 # Import `ScientificCameras` methods in such a way (i.e. with `importall`) that
-# they can be extended in this modul and re-exprot them to make things easier
+# they can be extended in this module and re-export them to make things easier
 # for the end-user.
 
 importall ScientificCameras
 import ScientificCameras: ScientificCamera, ROI
 using ScientificCameras.PixelFormats
 export
-    PHXError,
-    open,
-    close,
-    read,
-    start,
-    stop,
-    abort,
-    wait,
-    release,
-    getfullsize,
-    getfullwidth,
-    getfullheight,
-    getroi,
-    setroi!,
-    resetroi!,
-    checkroi,
-    getpixelformat,
-    setpixelformat!,
-    getcapturebitstype,
-    supportedpixelformats,
-    bitsperpixel,
-    equivalentbitstype,
-    getspeed,
-    setspeed!,
-    checkspeed,
-    getgain,
-    setgain!,
-    getbias,
-    setbias!,
-    getgamma,
-    setgamma!
+    PHXError
+
+# Re-export the public interface of the ScientificCameras module.
+ScientificCameras.@exportpublicinterface
+
 
 include("constants.jl")
 include("CoaXPress.jl")
