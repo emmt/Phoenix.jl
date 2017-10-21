@@ -1,3 +1,24 @@
+- Fix value(s) returned by `wait`; suggestion:  `img, ts = wait(cam, tm)` where
+  `img` is the next image to process, `ts` is a timestamp (in seconds) and `tm`
+  a timeout (in seconds).  In that case, add methods to query the number of missed
+  frames.
+
+- Suggestion: called as `read(cam)`, the read method should return a single
+  image (not a vector with a single image).
+
+- The `read` and `wait` methods can return images with various element types.
+  This break *type invariance*, but it is easy to cope with that by having all
+  processing done by methods (not inlined code).  This should be explained in
+  the documentation with an example like computing the mean image of a running
+  sequence.  Another possibility is to have filters (*e.g.* to apply
+  preprocessing like bias and gain correction) which automatically convert the
+  captured image to a given type (*e.g.* floating-point).
+
+- Define a `TimeoutException <: Exception` to be thrown in case of timeout.
+  When no exception occurs, `try ... catch ... end` takes less than 20ns (on
+  average); when an exception occurs, it takes 25µs (on average); in any case
+  the garbage collector is not triggered.
+
 - For the MikrotronMC408x camera: disable *Pixel Pulse Reset*, read camera
   temperature, set the sensor clock rate. Set TriggerMode to off, use
   ExposureTimeMax and AcquisitionFrameRateMax registers to figure out the
