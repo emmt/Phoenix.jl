@@ -1,3 +1,8 @@
+- For the MikrotronMC408x camera: disable *Pixel Pulse Reset*, read camera
+  temperature, set the sensor clock rate. Set TriggerMode to off, use
+  ExposureTimeMax and AcquisitionFrameRateMax registers to figure out the
+  max. allowed values.  Use ConnectionConfig to set the connection speed.
+
 - Fix hack in read() to avoid loosing one frame.
 
 - Use Phoenix frame grabber counters.

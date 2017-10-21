@@ -20,6 +20,20 @@ using ScientificCameras.PixelFormats
 using Phoenix
 importall Phoenix.Development
 
+macro exportmethods()
+    :(export setfixedpatternnoisereduction!,
+      getfixedpatternnoisereduction,
+      setinfofieldframecounter!,
+      getinfofieldframecounter,
+      setinfofieldtimestamp!,
+      getinfofieldtimestamp,
+      setinfofieldroi!,
+      getinfofieldroi,
+      setfiltermode!,
+      getfiltermode)
+end
+@exportmethods
+
 #
 # CoaXPress camera constants for a Mikrotron MC408x camera.  These values have
 # been extracted from the XML configuration file of the camera.
@@ -126,11 +140,11 @@ const DEVICE_INFORMATION_SELECTOR     = RegisterValue{Void,Unreachable}(0x8A00)
 const ANALOG_REGISTER_SET_SELECTOR    = RegisterValue{Void,Unreachable}(0x20000)
 const ANALOG_REGISTER_SELECTOR        = RegisterValue{Void,Unreachable}(0x20004)
 const ANALOG_VALUE                    = RegisterValue{Void,Unreachable}(0x20008)
-const INFO_FIELD_FRAME_COUNTER_ENABLE = RegisterValue{Void,Unreachable}(0x9310)
-const INFO_FIELD_TIME_STAMP_ENABLE    = RegisterValue{Void,Unreachable}(0x9314)
-const INFO_FIELD_ROI_ENABLE           = RegisterValue{Void,Unreachable}(0x9318)
-const FIXED_PATTERN_NOISE_REDUCTION   = RegisterValue{Void,Unreachable}(0x8A10)
-const FILTER_MODE                     = RegisterValue{Void,Unreachable}(0x10014)
+const INFO_FIELD_FRAME_COUNTER_ENABLE = RegisterValue{UInt32,ReadWrite}(0x9310)
+const INFO_FIELD_TIME_STAMP_ENABLE    = RegisterValue{UInt32,ReadWrite}(0x9314)
+const INFO_FIELD_ROI_ENABLE           = RegisterValue{UInt32,ReadWrite}(0x9318)
+const FIXED_PATTERN_NOISE_REDUCTION   = RegisterValue{UInt32,ReadWrite}(0x8A10)
+const FILTER_MODE                     = RegisterEnum{ReadWrite}(0x10014)
 const PIXEL_TYPE_F                    = RegisterValue{Void,Unreachable}(0x51004)
 const DIN1_CONNECTOR_TYPE             = RegisterValue{Void,Unreachable}(0x8A30)
 const IS_IMPLEMENTED_MULTI_ROI        = RegisterValue{Void,Unreachable}(0x50004)
@@ -138,6 +152,10 @@ const IS_IMPLEMENTED_SEQUENCER        = RegisterValue{Void,Unreachable}(0x50008)
 const CAMERA_TYPE_HEX                 = RegisterValue{Void,Unreachable}(0x51000)
 const CAMERA_STATUS                   = RegisterValue{Void,Unreachable}(0x10002200)
 const IS_STOPPED                      = RegisterValue{Void,Unreachable}(0x10002204)
+
+const FILTER_MODE_RAW                 = UInt32(0)
+const FILTER_MODE_MONO                = UInt32(1)
+const FILTER_MODE_COLOR               = UInt32(2)
 
 
 # Singleton to uniquely identify this camera model.
@@ -755,5 +773,158 @@ function setparam!(cam::Camera{MikrotronMC408xModel},
     printerror(errmode) # restore previous mode
     checkstatus(status)
 end
+
+"""
+    setfixedpatternnoisereduction!(cam, val)
+
+switches the Fixed Pattern Noise Reduction feature on or off for camera `cam`.
+
+    getfixedpatternnoisereduction(cam)
+
+yields the current setting.
+
+"""
+setfixedpatternnoisereduction!(cam::Camera{MikrotronMC408xModel}, val::Bool) =
+    cam[FIXED_PATTERN_NOISE_REDUCTION] = (val ? one(UInt32) : zero(UInt32))
+
+getfixedpatternnoisereduction(cam::Camera{MikrotronMC408xModel}) =
+    (cam[FIXED_PATTERN_NOISE_REDUCTION] != zero(UInt32))
+
+@doc @doc(setfixedpatternnoisereduction!) getfixedpatternnoisereduction
+
+"""
+    setinfofieldframecounter!(cam, val)
+
+enables/disables the *frame counter* info field in the images captured by
+camera `cam`.  If enabled, the Frame Counter info field overwrites the 1-st to
+4-th pixels of the images as a 32-bit unsigned integer.
+
+    getinfofieldframecounter(cam)
+
+yields the current setting.
+
+    getinfofieldframecounter(cam, i)
+
+yields the value of the frame counter info field in `i`-th captured image
+buffer.
+
+"""
+setinfofieldframecounter!(cam::Camera{MikrotronMC408xModel}, val::Bool) =
+    cam[INFO_FIELD_FRAME_COUNTER_ENABLE] = (val ? one(UInt32) : zero(UInt32))
+
+getinfofieldframecounter(cam::Camera{MikrotronMC408xModel}) =
+    (cam[INFO_FIELD_FRAME_COUNTER_ENABLE] != zero(UInt32))
+
+getinfofieldframecounter(cam::Camera{MikrotronMC408xModel}, i::Integer) =
+    convert(Int, getinfofieldvalue(UInt32, cam.imgs[i], 0))
+
+@doc @doc(setinfofieldframecounter!) getinfofieldframecounter
+
+"""
+    setinfofieldtimestamp!(cam, val)
+
+enables/disables the *time stamp* info field in the images captured by camera
+`cam`.  The frequency of the time stamp counter amounts to 25 MHz (period = 40
+nanoseconds) and is stored as a 32-bit unsigned integer.  If enabled, the time
+stamp info field overwrites the 5-th to 8-th pixels of the images.
+
+    getinfofieldtimestamp(cam)
+
+yields the current setting.
+
+    getinfofieldtimestamp(cam, i)
+
+yields the value (in seconds) of the time stamp info field in `i`-th captured
+image buffer.
+
+"""
+setinfofieldtimestamp!(cam::Camera{MikrotronMC408xModel}, val::Bool) =
+    cam[INFO_FIELD_TIME_STAMP_ENABLE] = (val ? one(UInt32) : zero(UInt32))
+
+getinfofieldtimestamp(cam::Camera{MikrotronMC408xModel}) =
+    (cam[INFO_FIELD_TIME_STAMP_ENABLE] != zero(UInt32))
+
+# The frequency of the time stamp counter amounts to 25 MHz (period = 40 nanoseconds).
+getinfofieldtimestamp(cam::Camera{MikrotronMC408xModel}, i::Integer) =
+    getinfofieldvalue(UInt32, cam.imgs[i], 4)*40e-9
+
+getinfofieldvalue(::Type{UInt16}, img::Array{UInt8,2}, off::Int) =
+    ((convert(UInt16, img[off+2]) <<  8) | convert(UInt16, img[off+1]))
+
+getinfofieldvalue(::Type{UInt32}, img::Array{UInt8,2}, off::Int) =
+    ((convert(UInt32, img[off+4]) << 24) |
+     (convert(UInt32, img[off+3]) << 16) |
+     (convert(UInt32, img[off+2]) <<  8) | convert(UInt32, img[off+1]))
+
+getinfofieldvalue(::Type{UInt32}, img::Array{UInt16,2}, off::Int) =
+    ((convert(UInt32, img[off+4] & 0x00FF) << 24) |
+     (convert(UInt32, img[off+3] & 0x00FF) << 16) |
+     (convert(UInt32, img[off+2] & 0x00FF) <<  8) | convert(UInt32, img[off+1] & 0x00FF))
+
+@doc @doc(setinfofieldtimestamp!) getinfofieldtimestamp
+
+"""
+    setinfofieldroi!(cam, val)
+
+enables/disables the *ROI* info field in the images captured by camera `cam`.
+If enabled, the ROI info field overwrites the 9-th to 16-th pixels of the
+images.  The ROI info is only available in 8-bit pixel format mode.
+
+    getinfofieldroi(cam)
+
+yields the current setting.
+
+    getinfofieldroi(cam, i)
+
+yields the value of the ROI info field in `i`-th captured image buffer.
+
+"""
+setinfofieldroi!(cam::Camera{MikrotronMC408xModel}, val::Bool) =
+    cam[INFO_FIELD_ROI_ENABLE] = (val ? one(UInt32) : zero(UInt32))
+
+getinfofieldroi(cam::Camera{MikrotronMC408xModel}) =
+    (cam[INFO_FIELD_ROI_ENABLE] != zero(UInt32))
+
+function getinfofieldroi(cam::Camera{MikrotronMC408xModel}, i::Integer)
+    img = cam.imgs[i]
+    xoff   = convert(Int, getinfofieldvalue(UInt16, img,  8))
+    width  = convert(Int, getinfofieldvalue(UInt16, img, 10))
+    yoff   = convert(Int, getinfofieldvalue(UInt16, img, 12))
+    height = convert(Int, getinfofieldvalue(UInt16, img, 14))
+    return (xoff, yoff, width, height)
+end
+
+@doc @doc(setinfofieldroi!) getinfofieldroi
+
+"""
+    setfiltermode!(cam, val)
+
+enables/disables the image filter mode of the camera `cam`.
+
+    getfiltermode(cam)
+
+yiels the current setting.
+
+"""
+function setfiltermode!(cam::Camera{MikrotronMC408xModel}, val::Bool)
+    if val
+        format = cam[PIXEL_FORMAT]
+        if (format == PIXEL_FORMAT_BAYERGR8 ||
+            format == PIXEL_FORMAT_BAYERGR10)
+            cam[FILTER_MODE] = FILTER_MODE_COLOR
+        elseif (format == PIXEL_FORMAT_MONO8 ||
+                format == PIXEL_FORMAT_MONO10)
+            cam[FILTER_MODE] = FILTER_MODE_MONO
+        else
+            error("unknown pixel format")
+        end
+    else
+        cam[FILTER_MODE] = FILTER_MODE_RAW
+    end
+    return nothing
+end
+
+getfiltermode(cam::Camera{MikrotronMC408xModel}) =
+    (cam[FILTER_MODE] != FILTER_MODE_RAW)
 
 end # module

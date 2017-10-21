@@ -161,7 +161,8 @@ stophook(cam::Camera{JAI_SP_5000M_Model}) =
 #     send(cam, RegisterCommand{UInt32}(0x8208, 1))
 include("MikrotronMC408x.jl")
 import .MikrotronMC408x: MikrotronMC408xModel
-
+using .MikrotronMC408x
+MikrotronMC408x.@exportmethods
 
 struct OptronisCL4000Model <: CameraModel; end
 
