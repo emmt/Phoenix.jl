@@ -51,15 +51,17 @@ See also: [`read`](@ref), [`start`](@ref), [`wait`](@ref).
 
 """
 mutable struct AcquisitionContext
-    mutex::Ptr{Void} # lock to protect this structure
-    cond::Ptr{Void}  # condition to signal events
-    events::UInt     # mask of events to be signaled
-    number::Int      # number of image buffers so far
-    overflows::Int   # number of overflows so far
-    synclosts::Int   # number of synchronization losts so far
-    pending::Int     # number of pending image buffers
+    mutex::Ptr{Void}      # Lock to protect this structure
+    cond::Ptr{Void}       # Condition to signal events
+    sec::_typeof_tv_sec   # Time stamp (seconds)
+    usec::_typeof_tv_usec # Time stamp (microseconds)
+    number::Int           # Number of image buffers so far
+    overflows::Int        # Number of overflows so far
+    synclosts::Int        # Number of synchronization losts so far
+    pending::Int          # Number of pending image buffers
+    events::UInt          # Mask of events to be signaled
     function AcquisitionContext()
-        ctx = new(C_NULL, C_NULL, 0, 0, 0, 0, 0)
+        ctx = new(C_NULL, C_NULL, 0, 0, 0, 0, 0, 0, 0)
         ctx.mutex = Libc.malloc(_sizeof_pthread_mutex_t)
         if ctx.mutex == C_NULL
             throw(OutOfMemoryError())
@@ -126,6 +128,7 @@ mutable struct Camera{M<:CameraModel} <: ScientificCamera
     timeout::UInt32 # time out (in ms) for reading/writing registers
     swap::Bool # swap bytes for read/write control connection?
     coaxpress::Bool # is it a CoaXPress camera?
+    fps::Float64 # Number of frames per second
 
     function Camera{M}(errorhandler::Ptr{Void} = _errorhandler_ptr[]) where {M}
         # Create a new PHX handle structure.
@@ -139,7 +142,7 @@ mutable struct Camera{M<:CameraModel} <: ScientificCamera
                      Vector{Array{UInt8,2}}(0),
                      Vector{ImageBuff}(0),
                      AcquisitionContext(),
-                     500, false, false)
+                     500, false, false, 0.0)
         finalizer(cam, _destroy)
         return cam
     end

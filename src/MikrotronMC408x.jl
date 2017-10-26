@@ -177,11 +177,12 @@ function openhook(cam::Camera{MikrotronMC408xModel})
         error("bad device model name (got \"$modelname\", expecting \"MC408[2367]\")")
     end
 
-    # Get size of current ROI.
+    # Get current hardware settings.
     xsub = Int(cam[DECIMATION_HORIZONTAL])
     ysub = Int(cam[DECIMATION_VERTICAL])
     width  = div(Int(cam[WIDTH]),  xsub)
     height = div(Int(cam[HEIGHT]), ysub)
+    cam.fps = getframespersecond(cam)
 
     # The following settings are the same as the contents of the configuration
     # file "Mikrotron_MC4080_CXP.pcf".
@@ -659,10 +660,15 @@ function guesscamerapixelformat(oldfmt::Integer, C::PixelFormat)
     end
 end
 
+getframespersecond(cam::Camera{MikrotronMC408xModel}) =
+    convert(Float64, cam[ACQUISITION_FRAME_RATE])
+
+getexposuretime(cam::Camera{MikrotronMC408xModel}) =
+    convert(Float64, cam[EXPOSURE_TIME]/1_000_000)
+
 # Extend method.
 getspeed(cam::Camera{MikrotronMC408xModel}) =
-    (convert(Float64, cam[ACQUISITION_FRAME_RATE]),
-     convert(Float64, cam[EXPOSURE_TIME]/1_000_000))
+    (getframespersecond(cam), getexposuretime(cam))
 
 # Extend method.
 function setspeed!(cam::Camera{MikrotronMC408xModel},
@@ -681,6 +687,7 @@ function setspeed!(cam::Camera{MikrotronMC408xModel},
     if newfps > oldfps
         cam[ACQUISITION_FRAME_RATE] = newfps
     end
+    cam.fps = getframespersecond(cam)
     nothing
 end
 
@@ -916,7 +923,7 @@ function setfiltermode!(cam::Camera{MikrotronMC408xModel}, val::Bool)
                 format == PIXEL_FORMAT_MONO10)
             cam[FILTER_MODE] = FILTER_MODE_MONO
         else
-            error("unknown pixel format")
+            error("unknown pixel format (0x$(hex(format)))")
         end
     else
         cam[FILTER_MODE] = FILTER_MODE_RAW

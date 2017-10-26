@@ -16,13 +16,14 @@
 const SUCCESS = Cint(0)
 const FAILURE = Cint(-1)
 
-const _offsetof_context_mutex     = fieldoffset(AcquisitionContext, :mutex)
 const _offsetof_context_cond      = fieldoffset(AcquisitionContext, :cond)
-const _offsetof_context_events    = fieldoffset(AcquisitionContext, :events)
+const _offsetof_context_mutex     = fieldoffset(AcquisitionContext, :mutex)
+const _offsetof_context_sec       = fieldoffset(AcquisitionContext, :sec)
 const _offsetof_context_number    = fieldoffset(AcquisitionContext, :number)
 const _offsetof_context_overflows = fieldoffset(AcquisitionContext, :overflows)
 const _offsetof_context_synclosts = fieldoffset(AcquisitionContext, :synclosts)
 const _offsetof_context_pending   = fieldoffset(AcquisitionContext, :pending)
+const _offsetof_context_events    = fieldoffset(AcquisitionContext, :events)
 
 # similar to unsafe_load but re-cast pointer as needed.
 @inline _load(::Type{T}, ptr::Ptr) where {T} =
@@ -70,6 +71,8 @@ function _callback(handle::Handle, events::UInt32, ctx::Ptr{Void})
     if ccall(:pthread_mutex_lock, Cint, (Ptr{Void},), mutex) == SUCCESS
         if (PHX_INTRPT_BUFFER_READY & events) != 0
             # A new frame is available.
+            ccall(:gettimeofday, Cint, (Ptr{Void}, Ptr{Void}),
+                  ctx + _offsetof_context_sec, C_NULL)
             _increment!(Int, ctx + _offsetof_context_number)
             _increment!(Int, ctx + _offsetof_context_pending)
         end
@@ -92,32 +95,40 @@ function _callback(handle::Handle, events::UInt32, ctx::Ptr{Void})
     return nothing
 end
 
-"""
-    _wait(ctx, timeout = TimeSpec(Inf)) -> index, ident, code
+# Extend method.
+wait(cam::Camera, timeout::Float64, drop::Bool) =
+    wait(cam, TimeSpec(time() + timeout), drop)
 
-waits for next signaled acquisition event but not later than the epoch
-specified by `timeout`.  Argument `ctx` specify the acquisition context shared
-with the frame grabber thread.  A tuple of 3 values is returned:
+function wait(cam::Camera, timeout::TimeSpec, drop::Bool)
+    # Check state.
+    if cam.state != 2
+        if cam.state == 0 || cam.state == 1
+            error("acquisition has not been started")
+        else
+            error("camera instance corrupted")
+        end
+    end
 
-* `index` is the index of the next image buffer to process, 0 if there are
-  none, -1 if there have been some errors;
-
-* `ident` is the identifier of the origin of the failure to return a new image
-  buffer to process;
-
-* `code` is the associated error code (may be: a Phoenix status or a POSIX
-  thread error code);
-
-"""
-function _wait(cam::Camera, timeout::TimeSpec = TimeSpec(Inf),
-               drop::Bool = false)
+    # Because we cannot throw anything while the mutex is locked, we defer
+    # reporting of error and use the following variables to keep track of what
+    # happens while the mutex was locked.
+    #
+    # `index` is the index of the next image buffer to process, 0 if there
+    #         are none, -1 if there have been some errors;
+    #
+    # `errname` is the identifier of the origin of the failure to return a new
+    #         image buffer to process;
+    #
+    # `errcode` is the associated error code (may be: a Phoenix status or a
+    #         POSIX thread error code);
+    local index::Int = 0 # index of frame to process if any
     local errname::Symbol = Symbol()
     local errcode::Int    = 0
     imgbuf = Ref{ImageBuff}()
-    local index::Int = 0 # index of frame to process if any
     ctx = cam.context # shortcut
 
-    # Beware to not throw anything while the mutex is locked!
+    # Lock mutex and wait for next image, taking care to not throw anything
+    # while the mutex is locked.
     code = ccall(:pthread_mutex_lock, Cint, (Ptr{Void},), ctx.mutex)
     if code != SUCCESS
         index, errname, errcode = -1, :lock, Int(code)
@@ -162,7 +173,7 @@ function _wait(cam::Camera, timeout::TimeSpec = TimeSpec(Inf),
                     break
                 end
                 ctx.pending -= 1
-                ctx.overflows += 1
+                ctx.overflows -= 1
             end
         end
         if index ≥ 0 && ctx.pending ≥ 1
@@ -172,9 +183,10 @@ function _wait(cam::Camera, timeout::TimeSpec = TimeSpec(Inf),
             if status != PHX_OK
                 index, errname, errcode = -1, :getbuffer, Int(status)
             else
+                # Retrieve index of last frame and fix time stamp to be
+                # (approximately) that of the previous frame.
                 index = Int(imgbuf[].pvContext)
-                ctx.pending -= 1 # FIXME: perhaps put this in the `release`
-                                 #        method
+                ctx.pending -= 1 # FIXME: do this in `release(cam)`?
             end
         end
         # Unlock the mutex (whatever the errors so far).
@@ -183,47 +195,33 @@ function _wait(cam::Camera, timeout::TimeSpec = TimeSpec(Inf),
             index, errname, errcode = -1, :unlock, Int(code)
         end
     end
-    return index, errname, errcode
-end
 
-function _waiterror(ident::Symbol, code::Integer)
-    if ident == :lock
-        error("failed to lock mutex")
-    elseif ident == :unlock
-        error("failed to unlock mutex")
-    elseif ident == :timedwait && code == Libc.ETIMEDOUT
-        error("time out occured while waiting for next frame")
-    elseif ident == :wait || ident == :timedwait
-        error("failed to wait for condition")
-    elseif ident == :getbuffer
-        error("failed to get image buffer [$(geterrormessage(code))]")
-    elseif ident == :releasebuffer
-        error("failed to release image buffer [$(geterrormessage(code))]")
-    else
-        error("some error occured while waiting for next frame [$ident, $code]")
-    end
-end
-
-# Extend method.
-wait(cam::Camera, timeout::Float64, drop::Bool) =
-    wait(cam, TimeSpec(time() + timeout), drop)
-
-function wait(cam::Camera, timeout::TimeSpec, drop::Bool) :: Int
-    if cam.state != 2
-        if cam.state == 0 || cam.state == 1
-            error("acquisition has not been started")
-        else
-            error("camera instance corrupted")
+    # Mutex has been unlocked, report errors if any.
+    if index ≤ 0
+        if errname == :timedwait && errcode == Libc.ETIMEDOUT
+            throw(TimeoutError())
         end
+        msg = (errname == :lock ?
+               "failed to lock mutex" :
+               errname == :unlock ?
+               "failed to unlock mutex" :
+               errname == :wait || errname == :timedwait ?
+               "failed to wait for condition" :
+               errname == :getbuffer ?
+               "failed to get image buffer [$(geterrormessage(errcode))]" :
+               errname == :releasebuffer ?
+               "failed to release image buffer [$(geterrormessage(errcode))]":
+               "some error occured while waiting for next frame [$errname, $errcode]")
+        error(msg)
     end
-    index, ident, code = _wait(cam, timeout, drop)
-    if index > 0
-        return index
-    elseif ident == :timedwait && code == Libc.ETIMEDOUT
-        return 0
-    else
-        _waiterror(ident, code)
-    end
+
+    # Retrieve time stamp of last frame and fix registered time stamp to be
+    # (approximately) that of the previous frame.
+    timestamp = ctx.sec + ctx.usec*1E6
+    sec = timestamp - 1/cam.fps
+    ctx.sec  = floor(_typeof_tv_sec, sec)
+    ctx.usec = round(_typeof_tv_usec, (sec - ctx.sec)*1E6)
+    return (cam.imgs[index], timestamp)
 end
 
 # FIXME: Something not specified in the doc. is that, when continuous
@@ -285,28 +283,29 @@ function _read(cam::Camera, ::Type{T}, num::Int, skip::Int) where {T}
     timeout = TimeSpec(time() + 1.0 + 1.01*((num + skip)/fps + exposure))
 
     # Start acquisition with given callback and collect images.
-    perms = Array{Int}(num)
+    imgs = Vector{Array{T,2}}(num)
     count = 0
-    local ident, code
     _start(cam)
-    while true
-        index = wait(cam, timeout, false)
-        if index == 0
-            warn("Timeout occured during acquisition!")
-            resize!(perms, count)
-            break
-        elseif skip > 0
-            skip -= 1
-            release(cam)
-        else
-            # Store index of next frame, since we do not release the image
-            # buffers we want to keep (to avoid overwriting by continuous
-            # acquisition), the returned index remains the same and we have to
-            # compute the actual index of the new frame ourself.
-            count += 1
-            perms[count] = mod(index + count - 2, num) + 1
-            if count ≥ num
-                break
+    while count < num
+        try
+            img, timestamp = wait(cam, timeout, false)
+            if skip > 0
+                # Skip this frame.
+                skip -= 1
+                release(cam)
+            else
+                # Store this frame.
+                count += 1
+                imgs[count] = img
+            end
+        catch e
+            if isa(e, TimeoutError)
+                warn("Acquisition timeout after $count image(s)")
+                num = count
+                resize!(imgs, num)
+            else
+                abort(cam)
+                rethrow(e)
             end
         end
     end
@@ -315,7 +314,7 @@ function _read(cam::Camera, ::Type{T}, num::Int, skip::Int) where {T}
     abort(cam)
 
     # Return re-ordered images.
-    return [cam.imgs[perms[i]] for i in 1:count]
+    return imgs
 end
 
 # Extend method.

@@ -1,3 +1,6 @@
+- `wait` now returns an image and a timestamp or throws a `TimeoutError` in
+  case of timeout.
+
 - New methods for the MikrotronMC408x camera: `setinfofieldframecounter!` and
   `getinfofieldframecounter` for info field frame counter to count images
   (overwriting the 4 first pixels of the captured images),
