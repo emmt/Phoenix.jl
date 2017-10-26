@@ -173,7 +173,7 @@ function wait(cam::Camera, timeout::TimeSpec, drop::Bool)
                     break
                 end
                 ctx.pending -= 1
-                ctx.overflows -= 1
+                ctx.overflows += 1
             end
         end
         if index ≥ 0 && ctx.pending ≥ 1
@@ -217,11 +217,8 @@ function wait(cam::Camera, timeout::TimeSpec, drop::Bool)
 
     # Retrieve time stamp of last frame and fix registered time stamp to be
     # (approximately) that of the previous frame.
-    timestamp = ctx.sec + ctx.usec*1E6
-    sec = timestamp - 1/cam.fps
-    ctx.sec  = floor(_typeof_tv_sec, sec)
-    ctx.usec = round(_typeof_tv_usec, (sec - ctx.sec)*1E6)
-    return (cam.imgs[index], timestamp)
+    ticks = ctx.sec + ctx.usec*1E-6 - ctx.pending/cam.fps
+    return (cam.imgs[index], ticks)
 end
 
 # FIXME: Something not specified in the doc. is that, when continuous
@@ -272,6 +269,7 @@ function _read(cam::Camera, ::Type{T}, num::Int, skip::Int) where {T}
     cam.context.number    = 0
     cam.context.overflows = 0
     cam.context.synclosts = 0
+    cam.context.pending   = 0
     cam[PHX_EVENT_CONTEXT] = Ref(cam.context)
 
     # Allocate image buffers and instruct the frame grabber to use them.
@@ -284,24 +282,24 @@ function _read(cam::Camera, ::Type{T}, num::Int, skip::Int) where {T}
 
     # Start acquisition with given callback and collect images.
     imgs = Vector{Array{T,2}}(num)
-    count = 0
+    cnt = 0
     _start(cam)
-    while count < num
+    while cnt < num
         try
-            img, timestamp = wait(cam, timeout, false)
+            img, ticks = wait(cam, timeout, false)
             if skip > 0
                 # Skip this frame.
                 skip -= 1
                 release(cam)
             else
                 # Store this frame.
-                count += 1
-                imgs[count] = img
+                cnt += 1
+                imgs[cnt] = img
             end
         catch e
             if isa(e, TimeoutError)
-                warn("Acquisition timeout after $count image(s)")
-                num = count
+                warn("Acquisition timeout after $cnt image(s)")
+                num = cnt
                 resize!(imgs, num)
             else
                 abort(cam)
@@ -318,8 +316,14 @@ function _read(cam::Camera, ::Type{T}, num::Int, skip::Int) where {T}
 end
 
 # Extend method.
-function read(cam::Camera, ::Type{T}, num::Int; skip::Integer = 0) where {T}
+read(cam::Camera, ::Type{T}, num::Int; skip::Integer = 0) where {T} =
     _read(cam, T, num, convert(Int, skip))
+
+# Extend method.
+function read(cam::Camera, ::Type{T}; skip::Integer = 0) where {T}
+    imgs = _read(cam, T, 1, convert(Int, skip))
+    length(imgs) == 1 && return imgs[1]
+    throw(TimeoutError())
 end
 
 # Extend method.
