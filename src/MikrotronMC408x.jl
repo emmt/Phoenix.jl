@@ -570,12 +570,11 @@ end
 # Extend method.
 function getpixelformat(cam::Camera{MikrotronMC408xModel})
     fmt = cam[PIXEL_FORMAT]
-    return ((fmt == PIXEL_FORMAT_MONO8     ? Monochrome{8}  :
-             fmt == PIXEL_FORMAT_MONO10    ? Monochrome{10} :
-             fmt == PIXEL_FORMAT_BAYERGR8  ? BayerGRBG{8}   :
-             fmt == PIXEL_FORMAT_BAYERGR10 ? BayerGRBG{10}  :
-             error("unexpected pixel format!")),
-            capture_format(cam[PHX_DST_FORMAT]))
+    return (fmt == PIXEL_FORMAT_MONO8     ? Monochrome{8}  :
+            fmt == PIXEL_FORMAT_MONO10    ? Monochrome{10} :
+            fmt == PIXEL_FORMAT_BAYERGR8  ? BayerGRBG{8}   :
+            fmt == PIXEL_FORMAT_BAYERGR10 ? BayerGRBG{10}  :
+            error("unexpected pixel format!"))
 end
 
 # Extend method.
@@ -608,7 +607,8 @@ function setpixelformat!(cam::Camera{MikrotronMC408xModel},
 end
 
 # Determine camera pixel format.
-function guesscamerapixelformat(oldfmt::Integer, C::PixelFormat)
+function guesscamerapixelformat(oldfmt::Integer,
+                                ::Type{C}) where {C <:PixelFormat}
     if C <: Monochrome
         if oldfmt != PIXEL_FORMAT_MONO8 && oldfmt != PIXEL_FORMAT_MONO10
             throw(ArgumentError("not a monochrome camera"))
