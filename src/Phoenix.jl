@@ -12,6 +12,8 @@
 # Copyright (C) 2017, Éric Thiébaut.
 #
 
+isdefined(Base, :__precompile__) && __precompile__(true)
+
 module Phoenix
 
 # Import `ScientificCameras` methods in such a way (i.e. with `importall`) that
