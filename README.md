@@ -13,8 +13,9 @@ This module provides a Julia interface to ActiveSilicon Phoenix frame grabber.
 
 The [`Phoenix`](https://github.com/emmt/Phoenix.jl) package complies with the
 [`ScientificCameras`](https://github.com/emmt/ScientificCameras.jl) interface.
-This interface is detailled there but some short examples are provided in what
-follows.
+This interface is detailled
+[there](https://github.com/emmt/ScientificCameras.jl#typical-usage) but some
+short examples are provided in what follows.
 
 The simplest example of acquisition of a sequence of `n` images is:
 
@@ -31,11 +32,10 @@ processing is:
 ```julia
 using Phoenix
 cam = open(Phoenix.MikrotronMC408xModel)
-bufs = start(cam, 4)
+start(cam, 4)
 for number in 1:100
-    index = wait(cam) # wait for next frame
-    buf = bufs[index] # get image buffer
-    ... # process the image buffer
+    img, ticks = wait(cam, 1) # wait for next frame but no longer than 1 sec
+    ... # process the image
     release(cam)
 end
 abort(cam)
