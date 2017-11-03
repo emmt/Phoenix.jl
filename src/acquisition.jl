@@ -86,12 +86,12 @@ function _callback(handle::Handle, events::UInt32, ctx::Ptr{Void})
             ccall(:gettimeofday, Cint, (Ptr{Void}, Ptr{Void}),
                   ctx + _offsetof_context_sec, C_NULL)
             # Get last captured image buffer.
-            status = ccall(_PHX_ControlRead,
+            status = ccall(_PHX_StreamRead,
                            Status, (Handle, Acq, Ptr{ImageBuff}),
                            handle, PHX_BUFFER_GET,
                            ctx + _offsetof_context_imgbuf)
             if status != PHX_OK
-                # FIXME:
+                # FIXME: this not an overflow
                 _increment!(Int, ctx + _offsetof_context_overflows)
             else
                 # Store the index of the last captured image.
