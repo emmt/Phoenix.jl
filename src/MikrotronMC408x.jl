@@ -182,7 +182,6 @@ function openhook(cam::Camera{MikrotronMC408xModel})
     ysub = Int(cam[DECIMATION_VERTICAL])
     width  = div(Int(cam[WIDTH]),  xsub)
     height = div(Int(cam[HEIGHT]), ysub)
-    cam.fps = getframespersecond(cam)
 
     # The following settings are the same as the contents of the configuration
     # file "Mikrotron_MC4080_CXP.pcf".
@@ -687,7 +686,6 @@ function setspeed!(cam::Camera{MikrotronMC408xModel},
     if newfps > oldfps
         cam[ACQUISITION_FRAME_RATE] = newfps
     end
-    cam.fps = getframespersecond(cam)
     nothing
 end
 

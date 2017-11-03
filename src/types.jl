@@ -53,15 +53,21 @@ See also: [`read`](@ref), [`start`](@ref), [`wait`](@ref).
 mutable struct AcquisitionContext
     mutex::Ptr{Void}      # Lock to protect this structure
     cond::Ptr{Void}       # Condition to signal events
-    sec::_typeof_tv_sec   # Time stamp (seconds)
-    usec::_typeof_tv_usec # Time stamp (microseconds)
+    # The 2 following fields should exactly match `ImageBuff` structure
+    imgbuf::Ptr{Void}     # Address of last captured image buffer
+    imgctx::Ptr{Void}     # Address of context associated with last ...
+    index::Int            # Index of last captured image buffer
+    # The 2 following fields should exactly match `TimeVal` structure
+    sec::_typeof_tv_sec   # Time stamp (seconds) of last captured image
+    usec::_typeof_tv_usec # Time stamp (microseconds) of last captured image
     number::Int           # Number of image buffers so far
     overflows::Int        # Number of overflows so far
     synclosts::Int        # Number of synchronization losts so far
     pending::Int          # Number of pending image buffers
     events::UInt          # Mask of events to be signaled
     function AcquisitionContext()
-        ctx = new(C_NULL, C_NULL, 0, 0, 0, 0, 0, 0, 0)
+        ctx = new(C_NULL, C_NULL, C_NULL, C_NULL,
+                  0, 0, 0, 0, 0, 0, 0, 0)
         ctx.mutex = Libc.malloc(_sizeof_pthread_mutex_t)
         if ctx.mutex == C_NULL
             throw(OutOfMemoryError())
@@ -84,6 +90,13 @@ mutable struct AcquisitionContext
         finalizer(ctx, _destroy)
         return ctx
     end
+end
+
+# Beware must not be mutable!
+struct FrameData
+    sec::_typeof_tv_sec   # Time stamp (seconds)
+    usec::_typeof_tv_usec # Time stamp (microseconds)
+    index::Int
 end
 
 """
@@ -123,12 +136,12 @@ mutable struct Camera{M<:CameraModel} <: ScientificCamera
     state::Int # 0 initially, 1 when camera open, 2 while acquiring
     handle::Handle
     imgs::Vector{Array{T,2}} where {T} # images for acquisition
+    ctxs::Vector{FrameData} # metadata for captured images
     bufs::Vector{ImageBuff} # virtual image buffers currently used
     context::AcquisitionContext # context shared with acquisition callback
     timeout::UInt32 # time out (in ms) for reading/writing registers
     swap::Bool # swap bytes for read/write control connection?
     coaxpress::Bool # is it a CoaXPress camera?
-    fps::Float64 # Number of frames per second
 
     function Camera{M}(errorhandler::Ptr{Void} = _errorhandler_ptr[]) where {M}
         # Create a new PHX handle structure.
@@ -140,9 +153,10 @@ mutable struct Camera{M<:CameraModel} <: ScientificCamera
         # Create the instance and attach the destroy callback.
         cam = new{M}(0, handle[],
                      Vector{Array{UInt8,2}}(0),
+                     Vector{FrameData}(0),
                      Vector{ImageBuff}(0),
                      AcquisitionContext(),
-                     500, false, false, 0.0)
+                     500, false, false)
         finalizer(cam, _destroy)
         return cam
     end

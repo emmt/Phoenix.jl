@@ -18,12 +18,23 @@ const FAILURE = Cint(-1)
 
 const _offsetof_context_cond      = fieldoffset(AcquisitionContext, :cond)
 const _offsetof_context_mutex     = fieldoffset(AcquisitionContext, :mutex)
+const _offsetof_context_imgbuf    = fieldoffset(AcquisitionContext, :imgbuf)
+const _offsetof_context_imgctx    = fieldoffset(AcquisitionContext, :imgctx)
+const _offsetof_context_index     = fieldoffset(AcquisitionContext, :index)
 const _offsetof_context_sec       = fieldoffset(AcquisitionContext, :sec)
+const _offsetof_context_usec      = fieldoffset(AcquisitionContext, :usec)
 const _offsetof_context_number    = fieldoffset(AcquisitionContext, :number)
 const _offsetof_context_overflows = fieldoffset(AcquisitionContext, :overflows)
 const _offsetof_context_synclosts = fieldoffset(AcquisitionContext, :synclosts)
 const _offsetof_context_pending   = fieldoffset(AcquisitionContext, :pending)
 const _offsetof_context_events    = fieldoffset(AcquisitionContext, :events)
+
+const _offsetof_framedata_sec     = fieldoffset(FrameData, :sec)
+const _offsetof_framedata_usec    = fieldoffset(FrameData, :usec)
+const _offsetof_framedata_index   = fieldoffset(FrameData, :index)
+
+@assert _offsetof_context_imgctx == _offsetof_context_imgbuf + sizeof(Ptr{Void})
+@assert _offsetof_context_usec == _offsetof_context_sec + sizeof(_typeof_tv_sec)
 
 # similar to unsafe_load but re-cast pointer as needed.
 @inline _load(::Type{T}, ptr::Ptr) where {T} =
@@ -71,10 +82,31 @@ function _callback(handle::Handle, events::UInt32, ctx::Ptr{Void})
     if ccall(:pthread_mutex_lock, Cint, (Ptr{Void},), mutex) == SUCCESS
         if (PHX_INTRPT_BUFFER_READY & events) != 0
             # A new frame is available.
+            # Take its arrival time stamp.
             ccall(:gettimeofday, Cint, (Ptr{Void}, Ptr{Void}),
                   ctx + _offsetof_context_sec, C_NULL)
-            _increment!(Int, ctx + _offsetof_context_number)
-            _increment!(Int, ctx + _offsetof_context_pending)
+            # Get last captured image buffer.
+            status = ccall(_PHX_ControlRead,
+                           Status, (Handle, Acq, Ptr{ImageBuff}),
+                           handle, PHX_BUFFER_GET,
+                           ctx + _offsetof_context_imgbuf)
+            if status != PHX_OK
+                # FIXME:
+                _increment!(Int, ctx + _offsetof_context_overflows)
+            else
+                # Store the index of the last captured image.
+                imgctx = _load(Ptr{Void}, ctx + _offsetof_context_imgctx)
+                _store!(Int, ctx + _offsetof_context_index,
+                        _load(Int, imgctx + _offsetof_framedata_index))
+                # Store the time stamp.
+                _store!(_typeof_tv_sec, imgctx + _offsetof_framedata_sec,
+                        _load(_typeof_tv_sec, ctx + _offsetof_context_sec))
+                _store!(_typeof_tv_usec, imgctx + _offsetof_framedata_usec,
+                        _load(_typeof_tv_usec, ctx + _offsetof_context_usec))
+                # Update counters.
+                _increment!(Int, ctx + _offsetof_context_number)
+                _increment!(Int, ctx + _offsetof_context_pending)
+            end
         end
         if (PHX_INTRPT_FIFO_OVERFLOW & events) != 0
             # Fifo overflow.
@@ -159,14 +191,6 @@ function wait(cam::Camera, timeout::TimeSpec, drop::Bool)
             # If no errors occured so far, get rid of unprocessed pending image
             # buffers.
             while ctx.pending > 1
-                if false # FIXME: It seems unnecessary to get a buffer before
-                         #        releasing it.
-                    status = _readstream(cam, PHX_BUFFER_GET, imgbuf)
-                    if status != PHX_OK
-                        index, errname, errcode = -1, :getbuffer, Int(status)
-                        break
-                    end
-                end
                 status = _readstream(cam, PHX_BUFFER_RELEASE, C_NULL)
                 if status != PHX_OK
                     index, errname, errcode = -1, :releasebuffer, Int(status)
@@ -179,14 +203,10 @@ function wait(cam::Camera, timeout::TimeSpec, drop::Bool)
         if index ≥ 0 && ctx.pending ≥ 1
             # If no errors occured so far and at least one image buffer is
             # unprocessed, manage to return the index of this buffer.
-            status = _readstream(cam, PHX_BUFFER_GET, imgbuf)
-            if status != PHX_OK
-                index, errname, errcode = -1, :getbuffer, Int(status)
-            else
-                # Retrieve index of last frame and fix time stamp to be
-                # (approximately) that of the previous frame.
-                index = Int(imgbuf[].pvContext)
-                ctx.pending -= 1 # FIXME: do this in `release(cam)`?
+            ctx.pending -= 1
+            index = ctx.index - ctx.pending
+            if index ≤ 0
+                index += length(cam.imgs)
             end
         end
         # Unlock the mutex (whatever the errors so far).
@@ -217,7 +237,7 @@ function wait(cam::Camera, timeout::TimeSpec, drop::Bool)
 
     # Retrieve time stamp of last frame and fix registered time stamp to be
     # (approximately) that of the previous frame.
-    ticks = ctx.sec + ctx.usec*1E-6 - ctx.pending/cam.fps
+    ticks = cam.ctxs[index].sec + cam.ctxs[index].usec*1E-6
     return (cam.imgs[index], ticks)
 end
 
@@ -265,11 +285,16 @@ function _read(cam::Camera, ::Type{T}, num::Int, skip::Int) where {T}
                               PHX_INTRPT_BUFFER_READY)
 
     # Configure acquisition context.
-    cam.context.events    = PHX_INTRPT_BUFFER_READY;
+    cam.context.imgbuf    = C_NULL
+    cam.context.imgctx    = C_NULL
+    cam.context.index     = 0
+    cam.context.sec       = 0
+    cam.context.usec      = 0
     cam.context.number    = 0
     cam.context.overflows = 0
     cam.context.synclosts = 0
     cam.context.pending   = 0
+    cam.context.events    = PHX_INTRPT_BUFFER_READY;
     cam[PHX_EVENT_CONTEXT] = Ref(cam.context)
 
     # Allocate image buffers and instruct the frame grabber to use them.
@@ -400,16 +425,17 @@ function _setbuffers!(cam::Camera, ::Type{T}, nbufs::Int) where {T}
         cam[PHX_ROI_DST_YOFFSET] = 0
         cam[PHX_BUF_DST_XLENGTH] = width*sizeof(T)
         cam[PHX_BUF_DST_YLENGTH] = height
-        imgs = [zeros(T, width, height) for i in 1:nbufs]
     elseif nbufs == 0
         width = 0
         height = 0
-        imgs = Vector{Array{T,2}}(0)
     else
         throw(ArgumentError("invalid number of image buffers"))
     end
+    imgs = [zeros(T, width, height) for i in 1:nbufs]
+    ctxs = [FrameData(0, 0, i) for i in 1:nbufs]
     bufs = [i ≤ nbufs ?
-            ImageBuff(pointer(imgs[i]), Ptr{Void}(i)) :
+            ImageBuff(pointer(imgs[i]),
+                      pointer(ctxs) + (i - 1)*sizeof(FrameData)) :
             ImageBuff(C_NULL, C_NULL) for i in 1:nbufs+1]
 
     # Common acquisition settings.
@@ -427,9 +453,10 @@ function _setbuffers!(cam::Camera, ::Type{T}, nbufs::Int) where {T}
     cam[(PHX_DST_PTR_TYPE|PHX_CACHE_FLUSH|
          PHX_FORCE_REWRITE)] = PHX_DST_PTR_USER_VIRT
 
-    # Store image buffers in camera instance to prevent claim by garbage
-    # collector.
+    # Store image buffers and metadata in camera instance to prevent claim by
+    # garbage collector.
     cam.imgs = imgs
+    cam.ctxs = ctxs
     cam.bufs = bufs # FIXME: Not sure this is needed if the above has immediate
                     #        effects.  We can check this by not setting this
                     #        reference, call the garbage collector and attempt
@@ -467,10 +494,16 @@ function start(cam::Camera, ::Type{T}, nbufs::Int = 2) where {T}
     #cam.context.events   = (PHX_INTRPT_BUFFER_READY|
     #                        PHX_INTRPT_FIFO_OVERFLOW|
     #                        PHX_INTRPT_SYNC_LOST);
-    cam.context.events    = PHX_INTRPT_BUFFER_READY;
+    cam.context.imgbuf    = C_NULL
+    cam.context.imgctx    = C_NULL
+    cam.context.index     = 0
+    cam.context.sec       = 0
+    cam.context.usec      = 0
     cam.context.number    = 0
     cam.context.overflows = 0
     cam.context.synclosts = 0
+    cam.context.pending   = 0
+    cam.context.events    = PHX_INTRPT_BUFFER_READY;
     cam[PHX_EVENT_CONTEXT] = Ref(cam.context)
 
     # Allocate image buffers and instruct the frame grabber to use them.
