@@ -89,16 +89,52 @@ printerror(newmode::Bool) =
 # error handler `_errorhandler` will call Phoenix default error handler (to
 # avoid using any Julia i/o routines); otherwise nothing is printed.  This
 # mecanism is intended to be able to toggle printing of error messages while
-# being thread safe because nothing from Julia is used.  You can check that the
-# following does not use Julia virtual machine by typing:
-#
-#     code_native(Phoenix._errorhandler, (Ptr{Cchar}, Cint, Ptr{Cchar}))
+# being thread safe because nothing from Julia is used.
 #
 const _printerror = Ref{Bool}(true)
-function _errorhandler(funcname::Ptr{Cchar}, errcode::Status, reason::Ptr{Cchar})
+const _lasterrfunc = Ref{Ptr{Cchar}}(C_NULL)
+const _lasterrcode = Ref{Status}(PHX_OK)
+const _lasterrmesg = Ref{Ptr{Cchar}}(C_NULL)
+
+"""
+    _errorhandler(func, code, mesg)
+
+error handler for the Phoenix library.  Temporarily stores last error and, if
+`_printerror[]` is true, immediately calls `_printlasterror()`; otherwise the
+error message can be printed a bit later (however prior to calling any Phoenix
+functions) by calling `_printlasterror()`.  This method is thread safe (it does
+not use Julia engine) as you can check with:
+
+    code_native(Phoenix._errorhandler, (Ptr{Cchar}, Cint, Ptr{Cchar}))
+
+"""
+function _errorhandler(func::Ptr{Cchar}, code::Status, mesg::Ptr{Cchar})
+    _lasterrfunc[] = func
+    _lasterrcode[] = code
+    _lasterrmesg[] = mesg
     if _printerror[]
-        ccall(_PHX_ErrHandlerDefault, Void, (Ptr{Cchar}, Status, Ptr{Cchar}),
-              funcname, errcode, reason)
+        _printlasterror()
     end
+end
+
+"""
+    _printlasterror()
+
+prints last error (if any and if `_printerror[]` is true) using the default
+error handler of the Phoenix library and clear memorized error.  This method is
+intended to be called right after an error occured.  This method is thread safe
+(it does not use Julia engine) as you can check with:
+
+    code_native(Phoenix._printlasterror, ())
+
+"""
+function _printlasterror()
+    if _printerror[] && _lasterrfunc[] != C_NULL && _lasterrmesg[] != C_NULL
+        ccall(_PHX_ErrHandlerDefault, Void, (Ptr{Cchar}, Status, Ptr{Cchar}),
+              _lasterrfunc[], _lasterrcode[], _lasterrmesg[])
+    end
+    _lasterrfunc[] = C_NULL
+    _lasterrcode[] = PHX_OK
+    _lasterrmesg[] = C_NULL
     return nothing
 end

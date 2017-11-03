@@ -739,43 +739,26 @@ function setparam!(cam::Camera{MikrotronMC408xModel},
                    key::RegisterValue{T,A}, val::T) where {T<:Real,A<:Writable}
     # Unfortunately, setting some parameters (as the pixel format or the gamma
     # correction) returns an error with an absurd code
-    # (`PHX_ERROR_MALLOC_FAILED`) which, in practice can be ignored as, after a
-    # while, getting the actual setting yields the correct value.  A number of
-    # queries of the value are necessary (usually 2 are sufficient) before
-    # getting a confirmation of the setting.
-    #
-    # To cope with this issue, we set such parameters ignoring errors and
-    # repeatedly query the parameter until it succeeds or a maximum number of
-    # tries is exceeded.  To avoid alarming the user, printing of error
-    # messages is disabled during this process.
-    errmode = printerror(false) # temporarily switch reporting of errors
+    # (`PHX_ERROR_MALLOC_FAILED`) even if the value has been correctly set.
+    # The error cannot be just ignored as further reads of registers yields
+    # wrong values.  The startegy is to close and re-open the camera when such
+    # an error occurs which solves the problem in practice to the cost of the
+    # time spent to close and re-open (0.4 sec.).  To avoid alarming the user,
+    # printing of error messages is disabled during this process.
+    errmode = printerror(false) # temporarily switch off reporting of errors
     buf = Ref{T}(val)
     status = _setparam!(cam, key, buf)
-    if status != PHX_OK
-        retry = false
-        if key.addr == PIXEL_FORMAT.addr && (val == PIXEL_FORMAT_MONO8     ||
-                                             val == PIXEL_FORMAT_MONO10    ||
-                                             val == PIXEL_FORMAT_BAYERGR8  ||
-                                             val == PIXEL_FORMAT_BAYERGR10 )
-            for i in 1:3
-                if _getparam(cam, key, buf) == PHX_OK && buf[] == val
-                    return nothing
-                end
-            end
-            printerror(errmode) # restore previous mode
-            error("failed to change pixel format to 0x", hex(val))
-        elseif key.addr == GAMMA && (GAMMA_MIN ≤ gamma ≤ GAMMA_MAX)
-            for i in 1:3
-                if (_getparam(cam, key, buf) == PHX_OK &&
-                    abs(buf[] - val) ≤ GAMMA_INCREMENT)
-                    return nothing
-                end
-            end
-            printerror(errmode) # restore previous mode
-            error(@sprintf("failed to change gamma correction to %0.1f", val))
-        end
-    end
     printerror(errmode) # restore previous mode
+    if status == PHX_ERROR_MALLOC_FAILED && cam.state == 1
+        close(cam)
+        open(cam; quiet=true)
+        if _getparam(cam, key, buf) == PHX_OK && buf[] == val
+            return nothing
+        end
+        error("failed to change register value")
+    elseif status != PHX_OK
+        _printlasterror()
+    end
     checkstatus(status)
 end
 
