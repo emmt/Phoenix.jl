@@ -593,7 +593,7 @@ function setpixelformat!(cam::Camera{MikrotronMC408xModel},
 
     # Determine best matching formats.
     oldfmt = cam[PIXEL_FORMAT]
-    newfmt = guesscamerapixelformat(oldfmt, T)
+    newfmt = guesspixelformat(oldfmt, T)
     srccol, srcdepth, dstfmt = equivalentformat(newfmt)
 
     # Apply the settings.
@@ -607,8 +607,8 @@ function setpixelformat!(cam::Camera{MikrotronMC408xModel},
 end
 
 # Determine camera pixel format.
-function guesscamerapixelformat(oldfmt::Integer,
-                                ::Type{C}) where {C <:PixelFormat}
+function guesspixelformat(oldfmt::Integer,
+                          ::Type{C}) where {C <:PixelFormat}
     if C <: Monochrome
         if oldfmt != PIXEL_FORMAT_MONO8 && oldfmt != PIXEL_FORMAT_MONO10
             throw(ArgumentError("not a monochrome camera"))
