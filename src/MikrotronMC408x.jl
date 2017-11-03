@@ -580,25 +580,6 @@ end
 
 # Extend method.
 function setpixelformat!(cam::Camera{MikrotronMC408xModel},
-                         ::Type{C}, ::Type{B}) where {C <: PixelFormat,
-                                                      B <: PixelFormat}
-    # Set the camera pixel format and the corresponding pixel format for
-    # captured image buffers.
-    setpixelformat!(cam, C)
-
-    # Check pixel format of captured images.
-    dstfmt = capture_format(B)
-    if dstfmt == zero(dstfmt)
-        throw(ArgumentError("unsupported pixel format of captured images"))
-    end
-    if cam[PHX_DST_FORMAT] != dstfmt
-        throw(ArgumentError("pixel format of captured images incompatible with camera pixel format"))
-    end
-    return nothing
-end
-
-# Extend method.
-function setpixelformat!(cam::Camera{MikrotronMC408xModel},
                          ::Type{T}) where {T <: PixelFormat}
     # Check state.
     if cam.state != 1
