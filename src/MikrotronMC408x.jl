@@ -691,19 +691,19 @@ end
 
 # Extend method.
 getgain(cam::Camera{MikrotronMC408xModel}) =
-    convert(Float64, cam[GAIN]/100)
+    convert(Float64, cam[GAIN])
 
 # Extend method.
 setgain!(cam::Camera{MikrotronMC408xModel}, gain::Float64) =
-    setifneeded!(cam, GAIN, gain*100)
+    setifneeded!(cam, GAIN, gain)
 
 # Extend method.
 getbias(cam::Camera{MikrotronMC408xModel}) =
-    convert(Float64, cam[BLACK_LEVEL]/100)
+    convert(Float64, cam[BLACK_LEVEL])
 
 # Extend method.
 setbias!(cam::Camera{MikrotronMC408xModel}, bias::Float64) =
-    setifneeded!(cam, BLACK_LEVEL, bias*100)
+    setifneeded!(cam, BLACK_LEVEL, bias)
 
 # Extend method.
 getgamma(cam::Camera{MikrotronMC408xModel}) =
