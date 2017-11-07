@@ -81,6 +81,8 @@ struct RegisterValue{T,A} <: Register where {T,A<:AccessMode}
     addr::UInt32
 end
 
+Base.eltype(::RegisterValue{T,A}) where {T,A<:AccessMode} = T
+
 const RegisterEnum{A} = RegisterValue{UInt32,A} where {A<:AccessMode}
 
 """
