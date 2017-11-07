@@ -676,7 +676,7 @@ getgain(cam::Camera{MikrotronMC408xModel}) =
 
 # Extend method.
 setgain!(cam::Camera{MikrotronMC408xModel}, gain::Float64) =
-    setifneeded!(cam, GAIN, gain)
+    setifneeded!(cam, GAIN, round(UInt32, gain))
 
 # Extend method.
 getbias(cam::Camera{MikrotronMC408xModel}) =
@@ -684,7 +684,7 @@ getbias(cam::Camera{MikrotronMC408xModel}) =
 
 # Extend method.
 setbias!(cam::Camera{MikrotronMC408xModel}, bias::Float64) =
-    setifneeded!(cam, BLACK_LEVEL, bias)
+    setifneeded!(cam, BLACK_LEVEL, round(UInt32, bias))
 
 # Extend method.
 getgamma(cam::Camera{MikrotronMC408xModel}) =
