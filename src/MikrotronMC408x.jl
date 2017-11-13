@@ -20,6 +20,8 @@ using ScientificCameras.PixelFormats
 using Phoenix
 importall Phoenix.Development
 
+import ScientificCameras.setspeed!
+
 macro exportmethods()
     :(export
       setfixedpatternnoisereduction!,
@@ -672,15 +674,15 @@ function setspeed!(cam::Camera{MikrotronMC408xModel},
 end
 
 function setspeed!(cam::Camera{MikrotronMC408xModel},
-                   fps::Float64, exp::AbstractString)
+                   fps::Real, exp::AbstractString)
     setspeed!(cam, fps, Symbol(exp))
 end
 
 function setspeed!(cam::Camera{MikrotronMC408xModel},
-                   fps::Float64, exp::Symbol)
+                   fps::Real, exp::Symbol)
     if exp == :max
-        setspeed!(cam, fps, 1)
-        setspeed!(cam, fps, cam[EXPOSURE_TIME_MAX])
+        setspeed!(cam, fps, 1e-6)
+        setspeed!(cam, fps, 1e-6*cam[EXPOSURE_TIME_MAX])
     else
         error("exposure can be a value of `:max`")
     end
