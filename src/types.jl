@@ -146,7 +146,7 @@ mutable struct Camera{M<:CameraModel} <: ScientificCamera
     function Camera{M}(errorhandler::Ptr{Void} = _errorhandler_ptr[]) where {M}
         # Create a new PHX handle structure.
         handle = Ref{Handle}(0)
-        status = ccall(_PHX_Create, Status, (Ptr{Handle}, Ptr{Void}),
+        status = ccall(_PHX_Create[], Status, (Ptr{Handle}, Ptr{Void}),
                        handle, errorhandler)
         status == PHX_OK || throw(PHXError(status))
 
@@ -174,10 +174,10 @@ function _destroy(cam::Camera)
         ref = Ref(cam.handle)
         if cam.state > 0
             # Close the camera.
-            ccall(_PHX_Close, Status, (Ptr{Handle},), ref)
+            ccall(_PHX_Close[], Status, (Ptr{Handle},), ref)
         end
         # Release other ressources.
-        ccall(_PHX_Destroy, Status, (Ptr{Handle},), ref)
+        ccall(_PHX_Destroy[], Status, (Ptr{Handle},), ref)
         cam.handle = 0 # to avoid doing this more than once
     end
 end

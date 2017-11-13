@@ -66,12 +66,14 @@ const _offsetof_framedata_index   = fieldoffset(FrameData, :index)
 """
 Callback for acquisition.
 
-This method does not use any Julia internals as you can figure out by
+This method does not use any Julia internals (unless the pointer
+`_PHX_StreamRead[]` is incorrectly initialized) as you can figure out by
 calling:
 
     code_native(Phoenix._callback, (Phoenix.Handle, UInt32, Ptr{Void}))
 
-This callback is therefore thread safe.
+which has only a call to `jl_throw` if the above mentioned pointer is
+incorrect.  This callback is therefore thread safe.
 
 """
 function _callback(handle::Handle, events::UInt32, ctx::Ptr{Void})
@@ -86,12 +88,12 @@ function _callback(handle::Handle, events::UInt32, ctx::Ptr{Void})
             ccall(:gettimeofday, Cint, (Ptr{Void}, Ptr{Void}),
                   ctx + _offsetof_context_sec, C_NULL)
             # Get last captured image buffer.
-            status = ccall(_PHX_StreamRead,
+            status = ccall(_PHX_StreamRead[],
                            Status, (Handle, Acq, Ptr{ImageBuff}),
                            handle, PHX_BUFFER_GET,
                            ctx + _offsetof_context_imgbuf)
             if status != PHX_OK
-                # FIXME: this not an overflow
+                # FIXME: this is not an overflow
                 _increment!(Int, ctx + _offsetof_context_overflows)
             else
                 # Store the index of the last captured image.

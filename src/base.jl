@@ -137,7 +137,7 @@ getparam(cam::Camera, key::Register) =
 function _getparam(cam::Camera,
                    key::Param{T,A},
                    buf::Union{Ptr,Ref}) where {T,A<:Readable}
-    ccall(_PHX_ParameterGet, Status, (Handle, Cuint, Ptr{Void}),
+    ccall(_PHX_ParameterGet[], Status, (Handle, Cuint, Ptr{Void}),
           cam.handle, key.ident, buf)
 end
 
@@ -262,7 +262,7 @@ setparam!(cam::Camera, key::Register, val) =
 function _setparam!(cam::Camera,
                     key::Param{T,A},
                     buf::Union{Ptr,Ref,Vector}) where {T,A<:Writable}
-    ccall(_PHX_ParameterSet, Status, (Handle, Cuint, Ptr{Void}),
+    ccall(_PHX_ParameterSet[], Status, (Handle, Cuint, Ptr{Void}),
           cam.handle, key.ident, buf)
 end
 
@@ -310,7 +310,7 @@ argument `what` specifies which parameters to save, it can be a combination
 function saveconfig(cam::Camera, name::AbstractString,
                     what::Integer = PHX_SAVE_ALL)
     flushcache(cam)
-    status = ccall(_PHX_Action, Status,
+    status = ccall(_PHX_Action[], Status,
                    (Handle, Action, ActionParam, Ptr{Void}),
                    cam.handle, PHX_CONFIG_SAVE, what, cstring(name))
     checkstatus(status)
@@ -334,25 +334,30 @@ readstream(args...) = checkstatus(_readstream(args...))
 # ============================================
 #
 
+const _PHX_FUNCTIONS = (:_PHX_Create, :_PHX_Open, :_PHX_Close, :_PHX_Destroy,
+                        :_PHX_StreamRead, :_PHX_ParameterGet, :_PHX_ParameterSet,
+                        :_PHX_ControlRead, :_PHX_ControlWrite, :_PHX_Action,
+                        :_PHX_ErrCodeDecode, :_PHX_ErrHandlerDefault)
+for sym in _PHX_FUNCTIONS
+    @eval const $sym = Ref{Ptr{Void}}(0)
+end
+
 const _errorhandler_ptr = Ref{Ptr{Void}}(0)
 const _callback_ptr = Ref{Ptr{Void}}(0)
 function __init__()
     _errorhandler_ptr[] = cfunction(_errorhandler, Void,
                                     (Ptr{Cchar}, Status, Ptr{Cchar}))
     _callback_ptr[] = cfunction(_callback, Void, (Handle, UInt32, Ptr{Void}))
-end
 
-# Manage to load the dynamic library and its symbols with appropriate flags.
-# It is still needed to start Julia with the correct dynamic library search
-# path (as checked above).
-const _PHXHANDLE = Libdl.dlopen(_PHXLIB, (Libdl.RTLD_LAZY |
-                                          Libdl.RTLD_DEEPBIND |
-                                          Libdl.RTLD_GLOBAL))
-for sym in (:_PHX_Create, :_PHX_Open, :_PHX_Close, :_PHX_Destroy,
-            :_PHX_StreamRead, :_PHX_ParameterGet, :_PHX_ParameterSet,
-            :_PHX_ControlRead, :_PHX_ControlWrite, :_PHX_Action,
-            :_PHX_ErrCodeDecode, :_PHX_ErrHandlerDefault)
-    @eval const $sym = Libdl.dlsym(_PHXHANDLE, $(string(sym)[2:end]))
+    # Manage to load the dynamic library and its symbols with appropriate
+    # flags.  It is still needed to start Julia with the correct dynamic library
+    # search path (as checked above).
+    handle = Libdl.dlopen(_PHXLIB, (Libdl.RTLD_LAZY |
+                                    Libdl.RTLD_DEEPBIND |
+                                    Libdl.RTLD_GLOBAL))
+    for sym in _PHX_FUNCTIONS
+        @eval $sym[] = Libdl.dlsym($handle, $(string(sym)[2:end]))
+    end
 end
 
 """
@@ -413,7 +418,7 @@ function Base.open(cam::Camera;
     checkstatus(_setparam!(cam, PHX_CONFIG_FILE,    ref_configfile))
 
     # Open the camera.
-    checkstatus(ccall(_PHX_Open, Status, (Handle,), cam.handle))
+    checkstatus(ccall(_PHX_Open[], Status, (Handle,), cam.handle))
     cam.state = 1
 
     # Discover whether we have a CoaXPress camera.
@@ -484,7 +489,7 @@ function Base.close(cam::Camera)
         # Note that PHX_Close requires the address of the handle but left its
         # contents unchanged.
         ref = Ref(cam.handle)
-        status = ccall(_PHX_Close, Status, (Ptr{Handle},), ref)
+        status = ccall(_PHX_Close[], Status, (Ptr{Handle},), ref)
         #cam.handle = ref[] # not needed (cf. note above)?
         status == PHX_OK || throw(PHXError(status))
         cam.state = 0
@@ -508,7 +513,7 @@ a pointer).
 
 """
 _readstream(cam::Camera, cmd::Acq, ptr::Union{Ref,Ptr}) =
-    ccall(_PHX_StreamRead, Status, (Handle, Acq, Ptr{Void}),
+    ccall(_PHX_StreamRead[], Status, (Handle, Acq, Ptr{Void}),
           cam.handle, cmd, ptr)
 
 """
@@ -544,7 +549,7 @@ See also: [`_readregister`](@ref), [`_writecontrol`](@ref).
 """
 function _readcontrol(handle::Handle, src::ControlPort, param, buf,
                       num::Ref{UInt32}, timeout::Integer)
-    ccall(_PHX_ControlRead, Status,
+    ccall(_PHX_ControlRead[], Status,
           (Handle, UInt32, Ptr{Void}, Ptr{Void}, Ptr{UInt32}, UInt32),
           handle, src.port, param, buf, num, timeout)
 end
@@ -582,7 +587,7 @@ See also: [`_writeregister`](@ref), [`_readcontrol`](@ref).
 """
 function _writecontrol(handle::Handle, src::ControlPort, param, buf,
                        num::Ref{UInt32}, timeout::Integer)
-    ccall(_PHX_ControlWrite, Status,
+    ccall(_PHX_ControlWrite[], Status,
           (Handle, UInt32, Ptr{Void}, Ptr{Void}, Ptr{UInt32}, UInt32),
           handle, src.port, param, buf, num, timeout)
 end

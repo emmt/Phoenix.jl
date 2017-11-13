@@ -27,7 +27,7 @@ See also: [`geterrorsymbol`](@ref), [`printerror`](@ref).
 """
 function geterrormessage(code::Integer)
     buf = zeros(UInt8, 512)
-    ccall(_PHX_ErrCodeDecode, Void, (Ptr{UInt8}, Status), buf, code)
+    ccall(_PHX_ErrCodeDecode[], Void, (Ptr{UInt8}, Status), buf, code)
     return unsafe_string(pointer(buf))
 end
 
@@ -130,7 +130,7 @@ intended to be called right after an error occured.  This method is thread safe
 """
 function _printlasterror()
     if _printerror[] && _lasterrfunc[] != C_NULL && _lasterrmesg[] != C_NULL
-        ccall(_PHX_ErrHandlerDefault, Void, (Ptr{Cchar}, Status, Ptr{Cchar}),
+        ccall(_PHX_ErrHandlerDefault[], Void, (Ptr{Cchar}, Status, Ptr{Cchar}),
               _lasterrfunc[], _lasterrcode[], _lasterrmesg[])
     end
     _lasterrfunc[] = C_NULL
