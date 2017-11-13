@@ -21,7 +21,8 @@ using Phoenix
 importall Phoenix.Development
 
 macro exportmethods()
-    :(export setfixedpatternnoisereduction!,
+    :(export
+      setfixedpatternnoisereduction!,
       getfixedpatternnoisereduction,
       setinfofieldframecounter!,
       getinfofieldframecounter,
@@ -666,6 +667,22 @@ function setspeed!(cam::Camera{MikrotronMC408xModel},
     end
     if newfps > oldfps
         cam[ACQUISITION_FRAME_RATE] = newfps
+    end
+    nothing
+end
+
+function setspeed!(cam::Camera{MikrotronMC408xModel},
+                   fps::Float64, exp::AbstractString)
+    setspeed!(cam, fps, Symbol(exp))
+end
+
+function setspeed!(cam::Camera{MikrotronMC408xModel},
+                   fps::Float64, exp::Symbol)
+    if exp == :max
+        setspeed!(cam, fps, 1)
+        setspeed!(cam, fps, cam[EXPOSURE_TIME_MAX])
+    else
+        error("exposure can be a value of `:max`")
     end
     nothing
 end
