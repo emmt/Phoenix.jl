@@ -74,6 +74,9 @@ const USER_SET_LOAD                 = RegisterCommand{UInt32}(0x8824, 1)
 const USER_SET_SAVE                 = RegisterCommand{UInt32}(0x8828, 1)
 const USER_SET_DEFAULT_SELECTOR     = RegisterEnum{ReadWrite}(0x882C)
 const DEVICE_RESET                  = RegisterCommand{UInt32}(0x8300, 1)
+const CONNECTION_RESET              = RegisterCommand{UInt32}(0x4000, 1)
+const CONNECTION_CONFIG             = RegisterValue{UInt32,ReadWrite}(0x4014)
+const CONNECTION_DEFAULT            = RegisterValue{UInt32,ReadOnly}(0x4018)
 
 # Image Format Control.
 const HORIZONTAL_INCREMENT          = 16
