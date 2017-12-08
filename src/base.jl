@@ -204,6 +204,12 @@ function setparam!(cam::Camera,
 end
 
 function setparam!(cam::Camera,
+                   key::Param{Void,A},
+                   ::Void) where {A<:Writable}
+    checkstatus(_setparam!(cam, key, C_NULL))
+end
+
+function setparam!(cam::Camera,
                    key::Param{Ptr{T},A},
                    buf::Union{Vector{T},Ptr{T},Ref{T}}) where {T,A<:Writable}
     checkstatus(_setparam!(cam, key, buf))

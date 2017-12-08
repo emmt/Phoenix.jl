@@ -1348,7 +1348,7 @@ int main()
   define("ParamValue", PHX_INVALID_PARAM, NULL);
   define("ParamValue", PHX_FORCE_REWRITE, NULL);
   define("ParamValue", PHX_CACHE_FLUSH,   NULL);
-  define("ParamValue", PHX_DUMMY_PARAM,   NULL);
+  define("Param{Void,WriteOnly}", PHX_DUMMY_PARAM,   NULL);
   define("ParamValue", PHX_MASK_CCIO,     NULL);
   define("ParamValue", PHX_MASK_CCOUT,    NULL);
   define("ParamValue", PHX_MASK_OPTO,     NULL);
