@@ -184,10 +184,10 @@ function openhook(cam::Camera{MikrotronMC408xModel})
     end
 
     # Get current hardware settings.
-    xsub = Int(cam[DECIMATION_HORIZONTAL])
-    ysub = Int(cam[DECIMATION_VERTICAL])
-    width  = div(Int(cam[WIDTH]),  xsub)
-    height = div(Int(cam[HEIGHT]), ysub)
+    xsub   = Int(cam[DECIMATION_HORIZONTAL]) # in pixels
+    ysub   = Int(cam[DECIMATION_VERTICAL])   # in pixels
+    width  = Int(cam[WIDTH])                 # in macro-pixels
+    height = Int(cam[HEIGHT])                # in macro-pixels
 
     # The following settings are the same as the contents of the configuration
     # file "Mikrotron_MC4080_CXP.pcf".
@@ -381,59 +381,55 @@ function getroi(cam::Camera{MikrotronMC408xModel};
     camwidth  = Int(cam[WIDTH])                 # in macro-pixels
     camheight = Int(cam[HEIGHT])                # in macro-pixels
 
-    # Retrieve current settings for the frame grabber source region.
+    # Make sure the active region is correct.
+    setactiveregion!(cam, camwidth, camheight)
+
+    # Retrieve current settings for the frame grabber ROI.
     srcxoff   = Int(cam[PHX_ROI_SRC_XOFFSET])   # in macro-pixels
     srcyoff   = Int(cam[PHX_ROI_SRC_YOFFSET])   # in macro-pixels
-    srcwidth  = Int(cam[PHX_ROI_XLENGTH])       # in macro-pixels
-    srcheight = Int(cam[PHX_ROI_YLENGTH])       # in macro-pixels
+    width  = Int(cam[PHX_ROI_XLENGTH])       # in macro-pixels
+    height = Int(cam[PHX_ROI_YLENGTH])       # in macro-pixels
 
-    # Check settings of the source region and fix them.
+    # Check settings of the source region and fix them (try to clip first and
+    # reset in last resort).
     clip = false
     reset = false
-    if (srcxoff ≥ camwidth  || srcxoff + srcwidth  < 1 ||
-        srcyoff ≥ camheight || srcyoff + srcheight < 1)
+    if srcxoff < 0
+        clip = true
+        width += srcxoff
+        srcxoff = 0
+    end
+    if srcxoff + width > camwidth
+        clip = true
+        width = camwidth - srcxoff
+    end
+    if srcyoff < 0
+        clip = true
+        height += srcyoff
+        srcyoff = 0
+    end
+    if srcyoff + height > camheight
+        clip = true
+        height = camheight - srcyoff
+    end
+    if width < 1 || height < 1
         reset = true
         srcxoff   = 0
         srcyoff   = 0
-        srcwidth  = camwidth
-        srcheight = camheight
-    else
-        if srcxoff < 0
-            clip = true
-            srcwidth += srcxoff
-            srcxoff = 0
-        end
-        if srcxoff + srcwidth > camwidth
-            clip = true
-            srcwidth = camwidth - srcxoff
-        end
-        if srcyoff < 0
-            clip = true
-            srcheight += srcyoff
-            srcyoff = 0
-        end
-        if srcyoff + srcheight > camheight
-            clip = true
-            srcheight = camheight - srcyoff
-        end
+        width  = camwidth
+        height = camheight
     end
     if reset || clip
-        if ! quiet && reset
-            warn("non-overlapping source region has been reset to active region")
-        end
-        if ! quiet && clip
-            warn("source region has been clipped within active region")
-        end
-        setsourceregion!(cam, srcxoff, srcyoff, srcwidth, srcheight)
+        quiet || warn(reset ?
+                      "non-overlapping ROI has been reset to active region" :
+                      "ROI has been clipped within active region")
+        setsourceregion!(cam, srcxoff, srcyoff, width, height)
     end
-
-    # Make sure the active region is correct.
-    setactiveregion!(cam, camwidth, camheight)
 
     # Compute actual ROI and return it.
     xoff = camxoff + srcxoff*xsub
     yoff = camyoff + srcyoff*ysub
-    return ROI(xsub, ysub, xoff, yoff, srcwidth, srcheight)
+    return ROI(xsub, ysub, xoff, yoff, width, height)
 end
 
 # Extend method.
@@ -448,20 +444,40 @@ function setroi!(cam::Camera{MikrotronMC408xModel}, roi::ROI;
     # Compute new settings for the camera (to use the smallest active region
     # within constraints) and the source region.
     camxoff, camwidth,  srcxoff = fitroi(roi.xsub, roi.xoff, roi.width,
-                                         HORIZONTAL_INCREMENT, "horizontal")
+                                         HORIZONTAL_INCREMENT, fullwidth,
+                                         "horizontal")
     camyoff, camheight, srcyoff = fitroi(roi.ysub, roi.yoff, roi.height,
-                                         VERTICAL_INCREMENT, "vertical")
+                                         VERTICAL_INCREMENT, fullheight,
+                                         "vertical")
+
+    # Compute actual size of ROI.
+    width  = min(roi.width,  camwidth  - srcxoff)
+    height = min(roi.height, camheight - srcyoff)
+
+    if true
+        # FIXME: There is a bug in the frame grabber which yields corrupted
+        # images when the size of the ROI does not match what is sent by the
+        # camera.
+        srcxoff = 0
+        srcyoff = 0
+        width = camwidth
+        height = camheight
+    end
 
     # Fix settings in a specific order such that the actual camera settings are
     # always valid.
-    fixcamroi!(cam, DECIMATION_HORIZONTAL, OFFSET_X, WIDTH,
-               roi.xsub, camxoff, camwidth)
-    fixcamroi!(cam, DECIMATION_VERTICAL,   OFFSET_Y, HEIGHT,
-               roi.ysub, camyoff, camheight)
+    fixcamroi!(cam,
+               DECIMATION_HORIZONTAL, roi.xsub,
+               OFFSET_X,              camxoff,
+               WIDTH,                 camwidth)
+    fixcamroi!(cam,
+               DECIMATION_VERTICAL,   roi.ysub,
+               OFFSET_Y,              camyoff,
+               HEIGHT,                camheight)
 
     # Set frame grabber parameters.
     setactiveregion!(cam, camwidth, camheight)
-    setsourceregion!(cam, srcxoff, srcyoff, roi.width, roi.height)
+    setsourceregion!(cam, srcxoff, srcyoff, width, height)
     return nothing
 end
 
@@ -487,39 +503,104 @@ result is nonnegative.
 See also: [`rounddown`](@ref)
 
 """
-roundup(a::Integer, b::Integer) = div((b - 1) + a, b)*b
+roundup(a::Integer, b::Integer) = rounddown((b - one(b)) + a, b)
 
 """
-    fitroi(sub, off, len, inc, dir) -> devoff, devlen, srcoff
+     divrnd(a, b) -> q
+
+yields `a/b` rounded to the nearest integer.  Arguments are assumed to be
+positive integers.  The result is the same as `round(Int, a/b)` but (slightly)
+faster.
+
+"""
+divrnd(a::Integer, b::Integer) = div(2a + b, 2b)
+
+"""
+    fitroi(sub, off, len, inc, lim, dir) -> devoff, devlen, srcoff
 
 yields the offset (in pixels) and the length (in macro-pixels) of the ROI for
-the camera and the offset (in macro-pixels) of the ROI for frame grabber to fit
-a 1D ROI where `sub` is the subsampling factor, `off` is the offset of the ROI
-relative to the sensor, `len` is the length of the ROI (in macro-pixels) and
-`inc` is the sensor increment (in pixels).  Last argument is "horizontal" or
-"vertical" and is used for error messages.
+the camera and the offset (in macro-pixels) of the ROI for the frame grabber to
+fit a 1D ROI where `sub` is the subsampling factor, `off` is the offset of the
+ROI relative to the sensor, `len` is the length of the ROI (in macro-pixels),
+`inc` is the sensor increment (in pixels) and `lim` is the maximum length (in
+pixels) of the device.  Last argument is `"horizontal"` or `"vertical"` and is
+used for error messages.
 
 """
-function fitroi(sub::Int, off::Int, len::Int, inc::Int, dir::String)
-    # Start with the largest device offset and reduce it by given increments
-    # until a perfect fit is found.
+function fitroi(sub::Int, off::Int, len::Int, inc::Int, lim::Int, dir::String)
+    # Check consistency of arguments.
+    @assert inc ≥ 1
+    @assert lim ≥ 1 && rem(lim, inc) == 0
+    @assert sub ≥ 1
+    @assert len ≥ 1
+    @assert off ≥ 0
+    @assert off + len*sub ≤ lim
+
+    # We have to make a compromise between exactness of the ROI (which is not
+    # always possible if `sub > 1`) and smallness of the size of the region
+    # sent by the camera.  If the region sent by the camera is large enough to
+    # encompass the requested ROI, then the maximal error on each side of the
+    # ROI is striclty less than a macro-pixel because it is always possible to
+    # reduce the final image by macro-pixel adjustments.  The strategy is then
+    # to choose the smallest possible region on the camera which encompass the
+    # requested ROI and, then, to compute macro-pixel adjustments to
+    # approximate the requested ROI.
+
+    # Offset in multiple of `inc` pixels which best fits by below the requested
+    # offset.
     devoff = rounddown(off, inc)
-    while true
-        srcoff, remoff = divrem(off - devoff, sub)
-        if remoff == 0
-            # A perfect offset has been found.
-            devlen, remlen = divrem(roundup((len + srcoff)*sub, inc), sub)
-            if remlen == 0
-                # A perfect fit has been found.
-                return (devoff, devlen, srcoff)
-            end
-        end
-        devoff -= inc
-        if devoff < 0
-            error("cannot adjust $dir offsets to fit ROI")
-        end
-    end
+
+    # Length of the region sent by the camera contrained to be a multiple of
+    # `inc` and `sub` (hence a multiple of their Least Common Multiple), at or
+    # after end of ROI (if possible) and whithin camera limits.
+    mul = lcm(inc, sub)
+    pixlen = min(roundup(off + len*sub - devoff, mul),
+                 rounddown(lim - devoff, mul))
+
+    # Size of region sent by the camera in macro-pixels.
+    devlen = div(pixlen, sub)
+
+    # Source offset in macro-pixels to best fits by below the requested ROI.
+    srcoff = div(off - devoff, sub)
+
+    return (devoff, devlen, srcoff)
 end
+
+# Other possible strategy
+# =======================
+#
+# The region of interest is `roi = (a,b]` in pixels with
+#
+#     a = off
+#     b = off + len⋅sub
+#
+# which is approximated by:
+#
+#     ap = k⋅inc + l⋅sub
+#     bp = k⋅inc + m⋅lcm(inc,sub) - n⋅sub
+#
+# where: `k ≥ 0`, `l ≥ 0`, `m > 0` and `n ≥ 0` are all nonnegative integers
+# and:
+#
+#     devoff = k⋅inc
+#     devlen = m⋅lcm(inc,sub)/sub
+#     srcoff = l
+#
+# so as to minimize the misfit:
+#
+#     err = abs(ap - a) + abs(bp - b)
+#
+# and for the same misfit, the objective is to minimize the number of
+# transmitted macro-pixels hence `devlen` (or equivalently `m`).
+#
+# If `k` and `m` are given, the best `l` and `n` are:
+#
+#     l = argmin_{l ≥ 0} abs(k⋅inc + l⋅sub - a)
+#       = max(0, round(Int, (a - k⋅inc)/sub))
+#
+#     n = argmin_{n ≥ 0} abs(k⋅inc + m⋅lcm(inc,sub) - n⋅sub - b)
+#       = max(0, round(Int, (k⋅inc + m⋅lcm(inc,sub) - b)/sub))
+#
 
 """
     fixcamroi!(cam, subkey, offkey, lenkey, sub, off, len)
@@ -532,8 +613,9 @@ pixels) and `len` the length of the ROI (in macro-pixels).
 
 """
 function fixcamroi!(cam::Camera{MikrotronMC408xModel},
-                    subkey::Register, offkey::Register, lenkey::Register,
-                    sub::Int, off::Int, len::Int)
+                    subkey::Register, sub::Int,
+                    offkey::Register, off::Int,
+                    lenkey::Register, len::Int)
     oldsub = Int(cam[subkey])
     oldoff = Int(cam[offkey])
     oldlen = Int(cam[lenkey])
