@@ -261,7 +261,7 @@ function read(cam::Camera, ::Type{T}, num::Int;
     # Check arguments.
     num ≥ 1 || throw(ArgumentError("invalid number of images"))
     skip ≥ 0 || throw(ArgumentError("invalid number of images to skip"))
-    timeout > zero(timeout) || error("invalid timeout")
+    timeout > zero(timeout) || throw(ArgumentError("invalid timeout"))
 
     # Final time.
     final = TimeSpec(time() + convert(Float64, timeout))
@@ -308,7 +308,7 @@ function read(cam::Camera, ::Type{T};
               timeout::Real = defaulttimeout(cam, 1 + skip)) where {T}
     # Check arguments.
     skip ≥ 0 || throw(ArgumentError("invalid number of images to skip"))
-    timeout > zero(timeout) || error("invalid timeout")
+    timeout > zero(timeout) || throw(ArgumentError("invalid timeout"))
 
     # Final time.
     final = TimeSpec(time() + convert(Float64, timeout))
