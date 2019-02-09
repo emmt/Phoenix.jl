@@ -16,19 +16,34 @@ isdefined(Base, :__precompile__) && __precompile__(true)
 
 module Phoenix
 
+export
+    PHXError,
+    send
+
 # Import `ScientificCameras` methods in such a way (i.e. with `importall`) that
 # they can be extended in this module and re-export them to make things easier
 # for the end-user.
-
-importall ScientificCameras
+# FIXME: see https://github.com/NTimmons/ImportAll.jl
+using ScientificCameras
+for sym in names(ScientificCameras)
+    if sym != :ScientificCameras
+        @eval begin
+            import ScientificCameras: $sym
+            export $sym
+        end
+    end
+end
 import ScientificCameras: TimeoutError, ScientificCamera, ROI
 using ScientificCameras.PixelFormats
-export
-    PHXError
+
+using Printf, Libdl
 
 # Re-export the public interface of the ScientificCameras module.
 ScientificCameras.@exportpublicinterface
 
+# Import methods for overloading them.
+import Base: |, &, ~, xor, convert
+import Sockets: send
 
 include("constants.jl")
 include("CoaXPress.jl")

@@ -13,6 +13,20 @@
 # Copyright (C) 2017, Éric Thiébaut.
 #
 
+function histogram(arr::AbstractArray{T,N}) where {T <: Integer, N}
+    amin, amax = extrema(arr)
+    cmin, cmax = Int(amin), Int(amax)
+    off = 1 - cmin
+    n = cmax + off
+    y = zeros(Int, n)
+    x = cmin:cmax
+    @inbounds for v in arr
+        i = off + Int(v)
+        y[i] += 1
+    end
+    return (x, y)
+end
+
 """
     fieldoffset(x::DataType, s::Symbol)
 
@@ -226,10 +240,10 @@ function best_capture_format(color::Integer, depth::Integer)
         elseif depth ≤ 16
             T, format = UInt16, PHX_DST_FORMAT_BAY16
         else
-            error("Don't know how to interpret Bayer color format (0x$(hex(color)))")
+            error("Don't know how to interpret Bayer color format (0x$(string(color, base=16)))")
         end
     else
-        error("Unknown camera color format (0x$(hex(color)))")
+        error("Unknown camera color format (0x$(string(color, base=16)))")
     end
     @assert sizeof(T)*8 == capture_format_bits(format)
     return T, format
@@ -253,7 +267,7 @@ An alternative (without the checking of embedded NUL characters) is:
 """
 function cstring(str::AbstractString,
                  len::Integer = length(str)) :: Array{UInt8}
-    buf = Array{UInt8}(len + 1)
+    buf = Array{UInt8}(undef, len + 1)
     i = 0
     @inbounds for c in str
         if i ≥ len
@@ -287,7 +301,7 @@ function Base.summary(cam::Camera)
 
     # Get the board properties.
     println("Board properties:")
-    for str in split(cam[PHX_BOARD_PROPERTIES], '\n', keep = false)
+    for str in split(cam[PHX_BOARD_PROPERTIES], '\n', keepempty = false)
         println("    ", str)
     end
 
@@ -382,7 +396,7 @@ which yields the is the same as
 """
 function gettimeofday()
     tvref = Ref{TimeVal}()
-    status = ccall(:gettimeofday, Cint, (Ptr{TimeVal}, Ptr{Void}),
+    status = ccall(:gettimeofday, Cint, (Ptr{TimeVal}, Ptr{Nothing}),
                    tvref, C_NULL)
     status == SUCCESS || error("gettimeofday failed")
     return tvref[]

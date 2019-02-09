@@ -6,8 +6,8 @@
  *
  *------------------------------------------------------------------------------
  *
+ * Copyright (C) 2017-2019, Éric Thiébaut.
  * Copyright (C) 2016, Éric Thiébaut & Jonathan Léger.
- * Copyright (C) 2017, Éric Thiébaut.
  * All rights reserved.
  */
 
@@ -118,9 +118,6 @@ int main()
   println("# Name of dynamic libraries.");
   println("const _PHXLIB = \"" PHX_DLL "\"");
   newline();
-  println("# Import methods for overloading them.");
-  println("import Base: |, &, ~, $, convert");
-  newline();
   println("# Size of mutexes and condition variables.");
   printf( "const _sizeof_pthread_mutex_t = %d\n", (int)sizeof(pthread_mutex_t));
   printf( "const _sizeof_pthread_cond_t  = %d\n", (int)sizeof(pthread_cond_t));
@@ -182,33 +179,33 @@ int main()
   println("# memory (used to specify user allocated image buffers).  It can be used");
   println("# either for virtual or physical addresses.");
   println("struct ImageBuff");
-  println("    pvAddress::Ptr{Void}");
-  println("    pvContext::Ptr{Void}");
+  println("    pvAddress::Ptr{Nothing}");
+  println("    pvContext::Ptr{Nothing}");
   println("end");
   newline();
   println("# This structure is used to specify the address, size and context of a");
   println("# block of memory (used to specify user locked image buffers).");
-  println("type UserBuff");
-  println("    pvAddress::Ptr{Void}");
+  println("struct UserBuff");
+  println("    pvAddress::Ptr{Nothing}");
   println("    qwSizeBytes::UInt64");
-  println("    pvContext::Ptr{Void}");
+  println("    pvContext::Ptr{Nothing}");
   println("end");
   newline();
-  println("type TimeStamp");
+  println("struct TimeStamp");
   println("    qwTime::UInt64");
   println("    qwEvent::UInt64");
   println("end");
   newline();
   println("# This structure is used to specify a colour by its individual");
   println("# components. (tColour)");
-  println("type Colour");
+  println("struct Colour");
   println("    bRed::UInt8");
   println("    bGreen::UInt8");
   println("    bBlue::UInt8");
   println("end");
   newline();
   println("# This structure holds the details of a logical LUT");
-  println("type LutInfo");
+  println("struct LutInfo");
   println("    dwLut::UInt32");
   println("    dwColour::UInt32");
   println("    dwTap::UInt32");
@@ -1348,7 +1345,7 @@ int main()
   define("ParamValue", PHX_INVALID_PARAM, NULL);
   define("ParamValue", PHX_FORCE_REWRITE, NULL);
   define("ParamValue", PHX_CACHE_FLUSH,   NULL);
-  define("Param{Void,WriteOnly}", PHX_DUMMY_PARAM,   NULL);
+  define("Param{Nothing,WriteOnly}", PHX_DUMMY_PARAM,   NULL);
   define("ParamValue", PHX_MASK_CCIO,     NULL);
   define("ParamValue", PHX_MASK_CCOUT,    NULL);
   define("ParamValue", PHX_MASK_OPTO,     NULL);
@@ -1531,8 +1528,8 @@ int main()
   define("Param{UInt32,ReadWrite}",     PHX_IO_OPTO,       NULL);
   define("Param{UInt32,ReadWrite}",     PHX_IO_OPTO_A,     "Absolute");
   define("Param{UInt32,ReadWrite}",     PHX_IO_OPTO_B,     NULL);
-  define("Param{Void,Unreachable}",     PHX_IO_OPTO_CLR,   NULL);
-  define("Param{Void,Unreachable}",     PHX_IO_OPTO_SET,   NULL);
+  define("Param{Nothing,Unreachable}",  PHX_IO_OPTO_CLR,   NULL);
+  define("Param{Nothing,Unreachable}",  PHX_IO_OPTO_SET,   NULL);
 
   println("# Camera Trigger Control");
   define("Param{ParamValue,ReadWrite}", PHX_CAMTRIG_SRC,               NULL);
@@ -1598,9 +1595,9 @@ int main()
   /*define("Param{String,ReadWrite}",   PHX_COMMS_POSTACQ,  NULL);*/
 
   println("# Miscellaneous Settings");
-  define("Param{ParamValue,ReadWrite}", PHX_DATASRC,       NULL);
-  define("Param{Ptr{Void},ReadWrite}",  PHX_EVENT_CONTEXT, NULL);
-  define("Param{ParamValue,ReadWrite}", PHX_DATARATE_TEST, NULL);
+  define("Param{ParamValue,ReadWrite}",   PHX_DATASRC,       NULL);
+  define("Param{Ptr{Nothing},ReadWrite}", PHX_EVENT_CONTEXT, NULL);
+  define("Param{ParamValue,ReadWrite}",   PHX_DATARATE_TEST, NULL);
 
   println("# Error Information");
   define("Param{Status,ReadOnly}", PHX_ERROR_FIRST_ERRNUM,    NULL);
@@ -1611,69 +1608,69 @@ int main()
   println("");
   println("# Undocumented Parameters (types have to be determined!)");
   println("# ======================================================");
-  define("Param{Void,Unreachable}", PHX_ACQTRIG_DELAY,              NULL);
-  define("Param{Void,Unreachable}", PHX_ACQ_AUTO_RESTART,           NULL);
-  define("Param{Void,Unreachable}", PHX_ACQ_HSCALE,                 NULL);
-  define("Param{Void,Unreachable}", PHX_BUF_SET,                    NULL);
-  define("Param{Void,Unreachable}", PHX_BUF_SET_COLOUR,             NULL);
-  define("Param{Void,Unreachable}", PHX_CAMERA_POWER,               NULL);
-  define("Param{Void,Unreachable}", PHX_CAMTRIG_DELAY_MODE,         NULL);
-  define("Param{Void,Unreachable}", PHX_CAM_CLOCK_MAX,              NULL);
-  define("Param{Void,Unreachable}", PHX_CAM_NUM_TAPS,               NULL);
-  define("Param{Void,Unreachable}", PHX_CLSER_INDEX,                NULL);
-  define("Param{Void,Unreachable}", PHX_COMMS_PORT_NAME,            NULL);
-  define("Param{Void,Unreachable}", PHX_CVB_PARAM,                  NULL);
-  define("Param{Void,Unreachable}", PHX_CXP_DOWNLINK_TEST,          NULL);
-  define("Param{Void,Unreachable}", PHX_CXP_POCXP,                  NULL);
-  define("Param{Void,Unreachable}", PHX_CXP_UPLINK_TEST,            NULL);
-  define("Param{Void,Unreachable}", PHX_CXP_UPLINK_TEST_COUNT_ERR,  NULL);
-  define("Param{Void,Unreachable}", PHX_CXP_UPLINK_TEST_COUNT_ERR1, NULL);
-  define("Param{Void,Unreachable}", PHX_CXP_UPLINK_TEST_COUNT_ERR2, NULL);
-  define("Param{Void,Unreachable}", PHX_CXP_UPLINK_TEST_COUNT_ERR3, NULL);
-  define("Param{Void,Unreachable}", PHX_CXP_UPLINK_TEST_COUNT_ERR4, NULL);
-  define("Param{Void,Unreachable}", PHX_CXP_UPLINK_TEST_COUNT_OK,   NULL);
-  define("Param{Void,Unreachable}", PHX_CXP_UPLINK_TEST_COUNT_OK1,  NULL);
-  define("Param{Void,Unreachable}", PHX_CXP_UPLINK_TEST_COUNT_OK2,  NULL);
-  define("Param{Void,Unreachable}", PHX_CXP_UPLINK_TEST_COUNT_OK3,  NULL);
-  define("Param{Void,Unreachable}", PHX_CXP_UPLINK_TEST_COUNT_OK4,  NULL);
-  define("Param{Void,Unreachable}", PHX_ERROR_HANDLER,              NULL);
-  define("Param{Void,Unreachable}", PHX_EXP_CTRLIO_1,               NULL);
-  define("Param{Void,Unreachable}", PHX_EXP_CTRLIO_2,               NULL);
-  define("Param{Void,Unreachable}", PHX_FIFO_BUFFER_COUNT,          NULL);
-  define("Param{Void,Unreachable}", PHX_FPGA_CORE_TEMP,             NULL);
-  define("Param{Void,Unreachable}", PHX_FW_DESIGN_FLASH,            NULL);
-  define("Param{Void,Unreachable}", PHX_FW_DESIGN_LIB,              NULL);
-  define("Param{Void,Unreachable}", PHX_FW_DESIGN_PROG,             NULL);
-  define("Param{Void,Unreachable}", PHX_FW_NUM_DESIGNS,             NULL);
-  define("Param{Void,Unreachable}", PHX_IMAGE_TIMESTAMP_MODE,       NULL);
-  define("Param{Void,Unreachable}", PHX_IO_TIMER_1_PERIOD,          NULL);
-  define("Param{Void,Unreachable}", PHX_IO_TIMER_2_PERIOD,          NULL);
-  define("Param{Void,Unreachable}", PHX_IO_TIMER_A1_PERIOD,         NULL);
-  define("Param{Void,Unreachable}", PHX_IO_TIMER_A2_PERIOD,         NULL);
-  define("Param{Void,Unreachable}", PHX_IO_TIMER_B1_PERIOD,         NULL);
-  define("Param{Void,Unreachable}", PHX_IO_TIMER_B2_PERIOD,         NULL);
-  define("Param{Void,Unreachable}", PHX_LINETRIG_SRC,               NULL);
-  define("Param{Void,Unreachable}", PHX_LINETRIG_TIMER_CTRL,        NULL);
-  define("Param{Void,Unreachable}", PHX_LINETRIG_TIMER_PERIOD,      NULL);
-  define("Param{Void,Unreachable}", PHX_MERGE_CHAN,                 NULL);
-  define("Param{Void,Unreachable}", PHX_MERGE_CHAN,                 NULL);
-  define("Param{Void,Unreachable}", PHX_MERGE_INTRPT_CLR,           NULL);
-  define("Param{Void,Unreachable}", PHX_MERGE_INTRPT_CLR,           NULL);
-  define("Param{Void,Unreachable}", PHX_MERGE_INTRPT_SET,           NULL);
-  define("Param{Void,Unreachable}", PHX_MERGE_INTRPT_SET,           NULL);
-  define("Param{Void,Unreachable}", PHX_REV_FLASH,                  NULL);
-  define("Param{Void,Unreachable}", PHX_REV_FW_FLASH,               NULL);
-  define("Param{Void,Unreachable}", PHX_REV_FW_LIB,                 NULL);
-  define("Param{Void,Unreachable}", PHX_STR_DESIGN_FLASH,           NULL);
-  define("Param{Void,Unreachable}", PHX_STR_DESIGN_LIB,             NULL);
-  define("Param{Void,Unreachable}", PHX_TAP_MODE,                   NULL);
-  define("Param{Void,Unreachable}", PHX_TIMERA1_PERIOD,             NULL);
-  define("Param{Void,Unreachable}", PHX_TIMERD1_VALUE,              NULL);
-  define("Param{Void,Unreachable}", PHX_TIMERD2_VALUE,              NULL);
-  define("Param{Void,Unreachable}", PHX_TIMERD2_VALUE_NS,           NULL);
-  define("Param{Void,Unreachable}", PHX_TIMERM1_WIDTH,              NULL);
-  define("Param{Void,Unreachable}", PHX_TIMERM2_WIDTH,              NULL);
-  define("Param{Void,Unreachable}", PHX_USER_FORMAT,                NULL);
+  define("Param{Nothing,Unreachable}", PHX_ACQTRIG_DELAY,              NULL);
+  define("Param{Nothing,Unreachable}", PHX_ACQ_AUTO_RESTART,           NULL);
+  define("Param{Nothing,Unreachable}", PHX_ACQ_HSCALE,                 NULL);
+  define("Param{Nothing,Unreachable}", PHX_BUF_SET,                    NULL);
+  define("Param{Nothing,Unreachable}", PHX_BUF_SET_COLOUR,             NULL);
+  define("Param{Nothing,Unreachable}", PHX_CAMERA_POWER,               NULL);
+  define("Param{Nothing,Unreachable}", PHX_CAMTRIG_DELAY_MODE,         NULL);
+  define("Param{Nothing,Unreachable}", PHX_CAM_CLOCK_MAX,              NULL);
+  define("Param{Nothing,Unreachable}", PHX_CAM_NUM_TAPS,               NULL);
+  define("Param{Nothing,Unreachable}", PHX_CLSER_INDEX,                NULL);
+  define("Param{Nothing,Unreachable}", PHX_COMMS_PORT_NAME,            NULL);
+  define("Param{Nothing,Unreachable}", PHX_CVB_PARAM,                  NULL);
+  define("Param{Nothing,Unreachable}", PHX_CXP_DOWNLINK_TEST,          NULL);
+  define("Param{Nothing,Unreachable}", PHX_CXP_POCXP,                  NULL);
+  define("Param{Nothing,Unreachable}", PHX_CXP_UPLINK_TEST,            NULL);
+  define("Param{Nothing,Unreachable}", PHX_CXP_UPLINK_TEST_COUNT_ERR,  NULL);
+  define("Param{Nothing,Unreachable}", PHX_CXP_UPLINK_TEST_COUNT_ERR1, NULL);
+  define("Param{Nothing,Unreachable}", PHX_CXP_UPLINK_TEST_COUNT_ERR2, NULL);
+  define("Param{Nothing,Unreachable}", PHX_CXP_UPLINK_TEST_COUNT_ERR3, NULL);
+  define("Param{Nothing,Unreachable}", PHX_CXP_UPLINK_TEST_COUNT_ERR4, NULL);
+  define("Param{Nothing,Unreachable}", PHX_CXP_UPLINK_TEST_COUNT_OK,   NULL);
+  define("Param{Nothing,Unreachable}", PHX_CXP_UPLINK_TEST_COUNT_OK1,  NULL);
+  define("Param{Nothing,Unreachable}", PHX_CXP_UPLINK_TEST_COUNT_OK2,  NULL);
+  define("Param{Nothing,Unreachable}", PHX_CXP_UPLINK_TEST_COUNT_OK3,  NULL);
+  define("Param{Nothing,Unreachable}", PHX_CXP_UPLINK_TEST_COUNT_OK4,  NULL);
+  define("Param{Nothing,Unreachable}", PHX_ERROR_HANDLER,              NULL);
+  define("Param{Nothing,Unreachable}", PHX_EXP_CTRLIO_1,               NULL);
+  define("Param{Nothing,Unreachable}", PHX_EXP_CTRLIO_2,               NULL);
+  define("Param{Nothing,Unreachable}", PHX_FIFO_BUFFER_COUNT,          NULL);
+  define("Param{Nothing,Unreachable}", PHX_FPGA_CORE_TEMP,             NULL);
+  define("Param{Nothing,Unreachable}", PHX_FW_DESIGN_FLASH,            NULL);
+  define("Param{Nothing,Unreachable}", PHX_FW_DESIGN_LIB,              NULL);
+  define("Param{Nothing,Unreachable}", PHX_FW_DESIGN_PROG,             NULL);
+  define("Param{Nothing,Unreachable}", PHX_FW_NUM_DESIGNS,             NULL);
+  define("Param{Nothing,Unreachable}", PHX_IMAGE_TIMESTAMP_MODE,       NULL);
+  define("Param{Nothing,Unreachable}", PHX_IO_TIMER_1_PERIOD,          NULL);
+  define("Param{Nothing,Unreachable}", PHX_IO_TIMER_2_PERIOD,          NULL);
+  define("Param{Nothing,Unreachable}", PHX_IO_TIMER_A1_PERIOD,         NULL);
+  define("Param{Nothing,Unreachable}", PHX_IO_TIMER_A2_PERIOD,         NULL);
+  define("Param{Nothing,Unreachable}", PHX_IO_TIMER_B1_PERIOD,         NULL);
+  define("Param{Nothing,Unreachable}", PHX_IO_TIMER_B2_PERIOD,         NULL);
+  define("Param{Nothing,Unreachable}", PHX_LINETRIG_SRC,               NULL);
+  define("Param{Nothing,Unreachable}", PHX_LINETRIG_TIMER_CTRL,        NULL);
+  define("Param{Nothing,Unreachable}", PHX_LINETRIG_TIMER_PERIOD,      NULL);
+  define("Param{Nothing,Unreachable}", PHX_MERGE_CHAN,                 NULL);
+  define("Param{Nothing,Unreachable}", PHX_MERGE_CHAN,                 NULL);
+  define("Param{Nothing,Unreachable}", PHX_MERGE_INTRPT_CLR,           NULL);
+  define("Param{Nothing,Unreachable}", PHX_MERGE_INTRPT_CLR,           NULL);
+  define("Param{Nothing,Unreachable}", PHX_MERGE_INTRPT_SET,           NULL);
+  define("Param{Nothing,Unreachable}", PHX_MERGE_INTRPT_SET,           NULL);
+  define("Param{Nothing,Unreachable}", PHX_REV_FLASH,                  NULL);
+  define("Param{Nothing,Unreachable}", PHX_REV_FW_FLASH,               NULL);
+  define("Param{Nothing,Unreachable}", PHX_REV_FW_LIB,                 NULL);
+  define("Param{Nothing,Unreachable}", PHX_STR_DESIGN_FLASH,           NULL);
+  define("Param{Nothing,Unreachable}", PHX_STR_DESIGN_LIB,             NULL);
+  define("Param{Nothing,Unreachable}", PHX_TAP_MODE,                   NULL);
+  define("Param{Nothing,Unreachable}", PHX_TIMERA1_PERIOD,             NULL);
+  define("Param{Nothing,Unreachable}", PHX_TIMERD1_VALUE,              NULL);
+  define("Param{Nothing,Unreachable}", PHX_TIMERD2_VALUE,              NULL);
+  define("Param{Nothing,Unreachable}", PHX_TIMERD2_VALUE_NS,           NULL);
+  define("Param{Nothing,Unreachable}", PHX_TIMERM1_WIDTH,              NULL);
+  define("Param{Nothing,Unreachable}", PHX_TIMERM2_WIDTH,              NULL);
+  define("Param{Nothing,Unreachable}", PHX_USER_FORMAT,                NULL);
 
   return 0;
 }

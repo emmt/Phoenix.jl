@@ -8,19 +8,30 @@
 # This file is part of the `Phoenix.jl` package which is licensed under the MIT
 # "Expat" License.
 #
+# Copyright (C) 2017-2019, Éric Thiébaut.
 # Copyright (C) 2016, Éric Thiébaut & Jonathan Léger.
-# Copyright (C) 2017, Éric Thiébaut.
 #
 
 module MikrotronMC408x
 
-importall ScientificCameras
-import ScientificCameras: ScientificCamera, ROI
-using ScientificCameras.PixelFormats
-using Phoenix
-importall Phoenix.Development
+using ScientificCameras, ScientificCameras.PixelFormats
+for sym in names(ScientificCameras)
+    if sym != :ScientificCameras
+        @eval begin
+            import ScientificCameras: $sym
+        end
+    end
+end
+import ScientificCameras: ScientificCamera, ROI, setspeed!
 
-import ScientificCameras.setspeed!
+using Phoenix
+for sym in names(Phoenix.Development)
+    if sym != :Development
+        @eval begin
+            import Phoenix.Development: $sym
+        end
+    end
+end
 
 macro exportmethods()
     :(export
@@ -54,8 +65,8 @@ const TRIGGER_SELECTOR              = RegisterEnum{ReadWrite}(0x8900)
 const TRIGGER_MODE                  = RegisterEnum{ReadWrite}(0x8904)
 const TRIGGER_SOURCE                = RegisterEnum{ReadWrite}(0x8908)
 const TRIGGER_ACTIVATION            = RegisterEnum{ReadWrite}(0x890C)
-const TRIGGER_COUNT                 = RegisterValue{Void,Unreachable}(0x891C)
-const TRIGGER_DEBOUNCER             = RegisterValue{Void,Unreachable}(0x8918)
+const TRIGGER_COUNT                 = RegisterValue{Nothing,Unreachable}(0x891C)
+const TRIGGER_DEBOUNCER             = RegisterValue{Nothing,Unreachable}(0x8918)
 const TRIGGER_SOFTWARE              = RegisterEnum{WriteOnly}(0x8910)
 const TEST_IMAGE_SELECTOR           = RegisterEnum{ReadWrite}(0x9000)
 const EXPOSURE_MODE                 = RegisterEnum{ReadWrite}(0x8944)
@@ -66,9 +77,9 @@ const ACQUISITION_FRAME_RATE_MIN    = 10 # FIXME: the XML file says 16
 const ACQUISITION_FRAME_RATE_MAX    = RegisterValue{UInt32,ReadOnly}(0x881C)
 const SEQUENCER_CONFIGURATION_MODE  = RegisterValue{UInt32,Unreachable}(0x8874)
 const SEQUENCER_MODE                = RegisterValue{UInt32,Unreachable}(0x8870)
-const SEQUENCER_SET_SELECTOR        = RegisterValue{Void,Unreachable}(0x8878)
-const SEQUENCER_SET_SAVE            = RegisterValue{Void,Unreachable}(0x887C)
-const SEQUENCER_SET_NEXT            = RegisterValue{Void,Unreachable}(0x8888)
+const SEQUENCER_SET_SELECTOR        = RegisterValue{Nothing,Unreachable}(0x8878)
+const SEQUENCER_SET_SAVE            = RegisterValue{Nothing,Unreachable}(0x887C)
+const SEQUENCER_SET_NEXT            = RegisterValue{Nothing,Unreachable}(0x8888)
 const USER_SET_SELECTOR             = RegisterEnum{ReadWrite}(0x8820)
 const USER_SET_LOAD                 = RegisterCommand{UInt32}(0x8824, 1)
 const USER_SET_SAVE                 = RegisterCommand{UInt32}(0x8828, 1)
@@ -136,28 +147,28 @@ const GAMMA_INCREMENT                 =  0.1
 #const LINE_SOURCE                    = RegisterEnum{ReadWrite}(0x????)
 #const LINE_SELECTOR                  = RegisterEnum{ReadWrite}(0x????)
 const LINE_INVERTER                   = RegisterEnum{ReadWrite}(0x8A20)
-const TX_LOGICAL_CONNECTION_RESET     = RegisterValue{Void,Unreachable}(0x9010)
-const PRST_ENABLE                     = RegisterValue{Void,Unreachable}(0x9200)
-const PULSE_DRAIN_ENABLE              = RegisterValue{Void,Unreachable}(0x9204)
-const CUSTOM_SENSOR_CLK_ENABLE        = RegisterValue{Void,Unreachable}(0x9300)
-const CUSTOM_SENSOR_CLK               = RegisterValue{Void,Unreachable}(0x9304)
-const DEVICE_INFORMATION              = RegisterValue{Void,Unreachable}(0x8A04)
-const DEVICE_INFORMATION_SELECTOR     = RegisterValue{Void,Unreachable}(0x8A00)
-const ANALOG_REGISTER_SET_SELECTOR    = RegisterValue{Void,Unreachable}(0x20000)
-const ANALOG_REGISTER_SELECTOR        = RegisterValue{Void,Unreachable}(0x20004)
-const ANALOG_VALUE                    = RegisterValue{Void,Unreachable}(0x20008)
+const TX_LOGICAL_CONNECTION_RESET     = RegisterValue{Nothing,Unreachable}(0x9010)
+const PRST_ENABLE                     = RegisterValue{UInt32,ReadWrite}(0x9200)
+const PULSE_DRAIN_ENABLE              = RegisterValue{UInt32,ReadWrite}(0x9204)
+const CUSTOM_SENSOR_CLK_ENABLE        = RegisterValue{Nothing,Unreachable}(0x9300)
+const CUSTOM_SENSOR_CLK               = RegisterValue{Nothing,Unreachable}(0x9304)
+const DEVICE_INFORMATION              = RegisterValue{Nothing,Unreachable}(0x8A04)
+const DEVICE_INFORMATION_SELECTOR     = RegisterValue{Nothing,Unreachable}(0x8A00)
+const ANALOG_REGISTER_SET_SELECTOR    = RegisterValue{Nothing,Unreachable}(0x20000)
+const ANALOG_REGISTER_SELECTOR        = RegisterValue{Nothing,Unreachable}(0x20004)
+const ANALOG_VALUE                    = RegisterValue{Nothing,Unreachable}(0x20008)
 const INFO_FIELD_FRAME_COUNTER_ENABLE = RegisterValue{UInt32,ReadWrite}(0x9310)
 const INFO_FIELD_TIME_STAMP_ENABLE    = RegisterValue{UInt32,ReadWrite}(0x9314)
 const INFO_FIELD_ROI_ENABLE           = RegisterValue{UInt32,ReadWrite}(0x9318)
 const FIXED_PATTERN_NOISE_REDUCTION   = RegisterValue{UInt32,ReadWrite}(0x8A10)
 const FILTER_MODE                     = RegisterEnum{ReadWrite}(0x10014)
-const PIXEL_TYPE_F                    = RegisterValue{Void,Unreachable}(0x51004)
-const DIN1_CONNECTOR_TYPE             = RegisterValue{Void,Unreachable}(0x8A30)
-const IS_IMPLEMENTED_MULTI_ROI        = RegisterValue{Void,Unreachable}(0x50004)
-const IS_IMPLEMENTED_SEQUENCER        = RegisterValue{Void,Unreachable}(0x50008)
-const CAMERA_TYPE_HEX                 = RegisterValue{Void,Unreachable}(0x51000)
-const CAMERA_STATUS                   = RegisterValue{Void,Unreachable}(0x10002200)
-const IS_STOPPED                      = RegisterValue{Void,Unreachable}(0x10002204)
+const PIXEL_TYPE_F                    = RegisterValue{Nothing,Unreachable}(0x51004)
+const DIN1_CONNECTOR_TYPE             = RegisterValue{Nothing,Unreachable}(0x8A30)
+const IS_IMPLEMENTED_MULTI_ROI        = RegisterValue{Nothing,Unreachable}(0x50004)
+const IS_IMPLEMENTED_SEQUENCER        = RegisterValue{Nothing,Unreachable}(0x50008)
+const CAMERA_TYPE_HEX                 = RegisterValue{Nothing,Unreachable}(0x51000)
+const CAMERA_STATUS                   = RegisterValue{Nothing,Unreachable}(0x10002200)
+const IS_STOPPED                      = RegisterValue{Nothing,Unreachable}(0x10002204)
 
 const FILTER_MODE_RAW                 = UInt32(0)
 const FILTER_MODE_MONO                = UInt32(1)
@@ -286,7 +297,7 @@ function equivalentformat(pixfmt::Integer)
         srcdepth = 10
         dstfmt   = PHX_DST_FORMAT_BAY16
     else
-        error("unknown pixel format 0x", hex(pixfmt))
+        error("unknown pixel format 0x", string(pixfmt, base=16))
     end
     return (srcfmt, srcdepth, dstfmt)
 end
@@ -420,9 +431,9 @@ function getroi(cam::Camera{MikrotronMC408xModel};
         height = camheight
     end
     if reset || clip
-        quiet || warn(reset ?
-                      "non-overlapping ROI has been reset to active region" :
-                      "ROI has been clipped within active region")
+        quiet || @warn (reset ?
+                        "non-overlapping ROI has been reset to active region" :
+                        "ROI has been clipped within active region")
         setsourceregion!(cam, srcxoff, srcyoff, width, height)
     end
 
@@ -542,8 +553,8 @@ function fitroi(sub::Int, off::Int, len::Int, inc::Int, lim::Int, dir::String)
     # encompass the requested ROI, then the maximal error on each side of the
     # ROI is striclty less than a macro-pixel because it is always possible to
     # reduce the final image by macro-pixel adjustments.  The strategy is then
-    # to choose the smallest possible region on the camera which encompass the
-    # requested ROI and, then, to compute macro-pixel adjustments to
+    # to choose the smallest possible region on the camera which encompasses
+    # the requested ROI and, then, to compute macro-pixel adjustments to
     # approximate the requested ROI.
 
     # Offset in multiple of `inc` pixels which best fits by below the requested
@@ -826,7 +837,7 @@ function setparam!(cam::Camera{MikrotronMC408xModel},
     # correction) returns an error with an absurd code
     # (`PHX_ERROR_MALLOC_FAILED`) even if the value has been correctly set.
     # The error cannot be just ignored as further reads of registers yields
-    # wrong values.  The startegy is to close and re-open the camera when such
+    # wrong values.  The strategy is to close and re-open the camera when such
     # an error occurs which solves the problem in practice to the cost of the
     # time spent to close and re-open (0.4 sec.).  To avoid alarming the user,
     # printing of error messages is disabled during this process.
@@ -989,7 +1000,7 @@ function setfiltermode!(cam::Camera{MikrotronMC408xModel}, val::Bool)
                 format == PIXEL_FORMAT_MONO10)
             cam[FILTER_MODE] = FILTER_MODE_MONO
         else
-            error("unknown pixel format (0x$(hex(format)))")
+            error("unknown pixel format (0x$(string(format, base=16)))")
         end
     else
         cam[FILTER_MODE] = FILTER_MODE_RAW

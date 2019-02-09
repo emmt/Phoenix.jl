@@ -10,14 +10,14 @@
 # "Expat" License.
 #
 # Copyright (C) 2016, Éric Thiébaut & Jonathan Léger.
-# Copyright (C) 2017, Éric Thiébaut.
+# Copyright (C) 2017-2019, Éric Thiébaut.
 #
 
 # Override bitwise operators for frame grabber parameters.
 (~)(x::Param{T,A}) where {T,A} = Param{T,A}(~x.ident)
 (|)(x::Param{T,A}, y::Integer) where {T,A} = Param{T,A}(x.ident | y)
 (&)(x::Param{T,A}, y::Integer) where {T,A} = Param{T,A}(x.ident & y)
-($)(x::Param{T,A}, y::Integer) where {T,A} = Param{T,A}(x.ident $ y)
+xor(x::Param{T,A}, y::Integer) where {T,A} = Param{T,A}(xor(x.ident, y))
 
 # Conversion to integer values of frame grabber parameters.
 convert(::Type{ParamValue}, x::Param) = x.ident
@@ -27,8 +27,8 @@ convert(::Type{T}, x::Param) where {T<:Integer} = convert(T, x.ident)
 # and CoaXPress registers.  For the more general case, we do not want to
 # pollute the other modules so we left the method definition be local to this
 # module.
-isreadable(x) = false
-iswritable(x) = false
+isreadable(::Any) = false
+iswritable(::Any) = false
 Base.isreadable(::Type{A}) where {A<:Readable} = true
 Base.iswritable(::Type{A}) where {A<:Writable} = true
 Base.isreadable(::Param) = false
@@ -105,15 +105,15 @@ function getparam(cam::Camera,
 end
 
 function getparam(cam::Camera,
-                  key::Param{Ptr{Void},A}) :: Ptr{Void} where {A<:Readable}
-    buf = Ref{Ptr{Void}}()
+                  key::Param{Ptr{Nothing},A}) :: Ptr{Nothing} where {A<:Readable}
+    buf = Ref{Ptr{Nothing}}()
     checkstatus(_getparam(cam, key, buf))
     return buf[]
 end
 
 function getparam(cam::Camera,
                   key::RegisterString{N,A}) where {N,A<:Readable}
-    buf = Array{UInt8}(N)
+    buf = Array{UInt8}(undef, N)
     checkstatus(_readregister(cam, key, buf, N))
     return unsafe_string(pointer(buf))
 end
@@ -137,7 +137,7 @@ getparam(cam::Camera, key::Register) =
 function _getparam(cam::Camera,
                    key::Param{T,A},
                    buf::Union{Ptr,Ref}) where {T,A<:Readable}
-    ccall(_PHX_ParameterGet[], Status, (Handle, Cuint, Ptr{Void}),
+    ccall(_PHX_ParameterGet[], Status, (Handle, Cuint, Ptr{Nothing}),
           cam.handle, key.ident, buf)
 end
 
@@ -204,8 +204,8 @@ function setparam!(cam::Camera,
 end
 
 function setparam!(cam::Camera,
-                   key::Param{Void,A},
-                   ::Void) where {A<:Writable}
+                   key::Param{Nothing,A},
+                   ::Nothing) where {A<:Writable}
     checkstatus(_setparam!(cam, key, C_NULL))
 end
 
@@ -216,7 +216,7 @@ function setparam!(cam::Camera,
 end
 
 function setparam!(cam::Camera,
-                   key::Param{Ptr{Void},A},
+                   key::Param{Ptr{Nothing},A},
                    buf::Union{Vector,Ptr,Ref}) where {A<:Writable}
     checkstatus(_setparam!(cam, key, buf))
 end
@@ -224,7 +224,7 @@ end
 function setparam!(cam::Camera,
                    key::RegisterString{N,A},
                    str::AbstractString) where {N,A<:Writable}
-    buf = Array{UInt8}(N)
+    buf = Array{UInt8}(undef, N)
     i = 0
     @inbounds for c in str
         if i ≥ N
@@ -268,7 +268,7 @@ setparam!(cam::Camera, key::Register, val) =
 function _setparam!(cam::Camera,
                     key::Param{T,A},
                     buf::Union{Ptr,Ref,Vector}) where {T,A<:Writable}
-    ccall(_PHX_ParameterSet[], Status, (Handle, Cuint, Ptr{Void}),
+    ccall(_PHX_ParameterSet[], Status, (Handle, Cuint, Ptr{Nothing}),
           cam.handle, key.ident, buf)
 end
 
@@ -291,7 +291,7 @@ hardware.
 
 """
 function flushcache(cam::Camera)
-    cam[Param{Ptr{Void},WriteOnly}(PHX_DUMMY_PARAM|PHX_CACHE_FLUSH)] = C_NULL
+    cam[Param{Ptr{Nothing},WriteOnly}(PHX_DUMMY_PARAM|PHX_CACHE_FLUSH)] = C_NULL
     nothing
 end
 
@@ -317,7 +317,7 @@ function saveconfig(cam::Camera, name::AbstractString,
                     what::Integer = PHX_SAVE_ALL)
     flushcache(cam)
     status = ccall(_PHX_Action[], Status,
-                   (Handle, Action, ActionParam, Ptr{Void}),
+                   (Handle, Action, ActionParam, Ptr{Nothing}),
                    cam.handle, PHX_CONFIG_SAVE, what, cstring(name))
     checkstatus(status)
 end
@@ -327,7 +327,7 @@ end
 # ===================================
 #
 
-function Base.send(cam::Camera, reg::RegisterCommand{T}) where {T}
+function send(cam::Camera, reg::RegisterCommand{T}) where {T}
     data = Ref{T}(cam.swap ? bswap(reg.value) : reg.value)
     checkstatus(_writeregister(cam, reg, data, sizeof(T)))
 end
@@ -341,19 +341,24 @@ readstream(args...) = checkstatus(_readstream(args...))
 #
 
 const _PHX_FUNCTIONS = (:_PHX_Create, :_PHX_Open, :_PHX_Close, :_PHX_Destroy,
-                        :_PHX_StreamRead, :_PHX_ParameterGet, :_PHX_ParameterSet,
-                        :_PHX_ControlRead, :_PHX_ControlWrite, :_PHX_Action,
+                        :_PHX_StreamRead, :_PHX_ParameterGet,
+                        :_PHX_ParameterSet, :_PHX_ControlRead,
+                        :_PHX_ControlWrite, :_PHX_Action,
                         :_PHX_ErrCodeDecode, :_PHX_ErrHandlerDefault)
 for sym in _PHX_FUNCTIONS
-    @eval const $sym = Ref{Ptr{Void}}(0)
+    @eval const $sym = Ref{Ptr{Nothing}}(0)
 end
 
-const _errorhandler_ptr = Ref{Ptr{Void}}(0)
-const _callback_ptr = Ref{Ptr{Void}}(0)
+function _errorhandler end
+function _callback end
+
+const _errorhandler_ptr = Ref{Ptr{Nothing}}(0)
+const _callback_ptr = Ref{Ptr{Nothing}}(0)
 function __init__()
-    _errorhandler_ptr[] = cfunction(_errorhandler, Void,
-                                    (Ptr{Cchar}, Status, Ptr{Cchar}))
-    _callback_ptr[] = cfunction(_callback, Void, (Handle, UInt32, Ptr{Void}))
+    _errorhandler_ptr[] = @cfunction(_errorhandler, Nothing,
+                                     (Ptr{Cchar}, Status, Ptr{Cchar}))
+    _callback_ptr[] = @cfunction(_callback, Nothing,
+                                 (Handle, UInt32, Ptr{Nothing}))
 
     # Manage to load the dynamic library and its symbols with appropriate
     # flags.  It is still needed to start Julia with the correct dynamic library
@@ -396,7 +401,7 @@ function Base.open(cam::Camera;
     # Check state.
     if cam.state != 0
         if cam.state == 1 || cam.state == 2
-            warn("camera has already been opened")
+            @warn "camera has already been opened"
             return cam
         else
             error("camera structure corrupted")
@@ -454,10 +459,10 @@ function Base.open(cam::Camera;
             vendorname  = cam[CXP_DEVICE_VENDOR_NAME]
             modelname   = cam[CXP_DEVICE_MODEL_NAME]
             pixelformat = cam[CXP_PIXEL_FORMAT_ADDRESS]
-            info("Vendor name:  $vendorname")
-            info("Model name:   $modelname")
-            info("Image size:   $width × $height pixels")
-            info("Pixel format: 0x$(hex(pixelformat))")
+            @info "Vendor name:  $vendorname"
+            @info "Model name:   $modelname"
+            @info "Image size:   $width × $height pixels"
+            @info "Pixel format: 0x$(string(pixelformat, base=16))"
         end
     end
 
@@ -490,7 +495,7 @@ See also: [`open`](@ref).
 """
 function Base.close(cam::Camera)
     if cam.state == 0
-        warn("camera has already been closed")
+        @warn "camera has already been closed"
     elseif cam.state == 1
         # Note that PHX_Close requires the address of the handle but left its
         # contents unchanged.
@@ -519,7 +524,7 @@ a pointer).
 
 """
 _readstream(cam::Camera, cmd::Acq, ptr::Union{Ref,Ptr}) =
-    ccall(_PHX_StreamRead[], Status, (Handle, Acq, Ptr{Void}),
+    ccall(_PHX_StreamRead[], Status, (Handle, Acq, Ptr{Nothing}),
           cam.handle, cmd, ptr)
 
 """
@@ -556,7 +561,7 @@ See also: [`_readregister`](@ref), [`_writecontrol`](@ref).
 function _readcontrol(handle::Handle, src::ControlPort, param, buf,
                       num::Ref{UInt32}, timeout::Integer)
     ccall(_PHX_ControlRead[], Status,
-          (Handle, UInt32, Ptr{Void}, Ptr{Void}, Ptr{UInt32}, UInt32),
+          (Handle, UInt32, Ptr{Nothing}, Ptr{Nothing}, Ptr{UInt32}, UInt32),
           handle, src.port, param, buf, num, timeout)
 end
 
@@ -594,6 +599,6 @@ See also: [`_writeregister`](@ref), [`_readcontrol`](@ref).
 function _writecontrol(handle::Handle, src::ControlPort, param, buf,
                        num::Ref{UInt32}, timeout::Integer)
     ccall(_PHX_ControlWrite[], Status,
-          (Handle, UInt32, Ptr{Void}, Ptr{Void}, Ptr{UInt32}, UInt32),
+          (Handle, UInt32, Ptr{Nothing}, Ptr{Nothing}, Ptr{UInt32}, UInt32),
           handle, src.port, param, buf, num, timeout)
 end

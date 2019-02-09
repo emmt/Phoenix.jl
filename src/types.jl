@@ -51,11 +51,11 @@ See also: [`read`](@ref), [`start`](@ref), [`wait`](@ref).
 
 """
 mutable struct AcquisitionContext
-    mutex::Ptr{Void}      # Lock to protect this structure
-    cond::Ptr{Void}       # Condition to signal events
+    mutex::Ptr{Nothing}   # Lock to protect this structure
+    cond::Ptr{Nothing}    # Condition to signal events
     # The 2 following fields should exactly match `ImageBuff` structure
-    imgbuf::Ptr{Void}     # Address of last captured image buffer
-    imgctx::Ptr{Void}     # Address of context associated with last ...
+    imgbuf::Ptr{Nothing}  # Address of last captured image buffer
+    imgctx::Ptr{Nothing}  # Address of context associated with last ...
     index::Int            # Index of last captured image buffer
     # The 2 following fields should exactly match `TimeVal` structure
     sec::_typeof_tv_sec   # Time stamp (seconds) of last captured image
@@ -72,7 +72,7 @@ mutable struct AcquisitionContext
         if ctx.mutex == C_NULL
             throw(OutOfMemoryError())
         end
-        if ccall(:pthread_mutex_init, Cint, (Ptr{Void}, Ptr{Void}),
+        if ccall(:pthread_mutex_init, Cint, (Ptr{Nothing}, Ptr{Nothing}),
                  ctx.mutex, C_NULL) != SUCCESS
             _destroy(ctx)
             error("pthread_mutex_init failed")
@@ -82,13 +82,12 @@ mutable struct AcquisitionContext
             _destroy(ctx)
             throw(OutOfMemoryError())
         end
-        if ccall(:pthread_cond_init, Cint, (Ptr{Void}, Ptr{Void}),
+        if ccall(:pthread_cond_init, Cint, (Ptr{Nothing}, Ptr{Nothing}),
                  ctx.cond, C_NULL) != SUCCESS
             _destroy(ctx)
             error("pthread_cond_init failed")
         end
-        finalizer(ctx, _destroy)
-        return ctx
+        return finalizer(_destroy, ctx)
     end
 end
 
@@ -107,18 +106,18 @@ acquisition context.  It *must not* be called directly.
 See also: [`Phoenix.Camera`](@ref), [`Phoenix.AcquisitionContext`](@ref).
 
 """
-# The destructor of an AcquisitionContext instance.
 function _destroy(ctx::AcquisitionContext)
+    # This is the destructor of an AcquisitionContext instance.
     if ctx.cond != C_NULL
         cond = ctx.cond
         ctx.cond = C_NULL
-        ccall(:pthread_cond_destroy, Cint, (Ptr{Void},), cond)
+        ccall(:pthread_cond_destroy, Cint, (Ptr{Nothing},), cond)
         Libc.free(cond)
     end
     if ctx.mutex != C_NULL
         mutex = ctx.mutex
         ctx.mutex = C_NULL
-        ccall(:pthread_mutex_destroy, Cint, (Ptr{Void},), mutex)
+        ccall(:pthread_mutex_destroy, Cint, (Ptr{Nothing},), mutex)
         Libc.free(mutex)
     end
 end
@@ -143,22 +142,21 @@ mutable struct Camera{M<:CameraModel} <: ScientificCamera
     swap::Bool # swap bytes for read/write control connection?
     coaxpress::Bool # is it a CoaXPress camera?
 
-    function Camera{M}(errorhandler::Ptr{Void} = _errorhandler_ptr[]) where {M}
+    function Camera{M}(errorhandler::Ptr{Nothing} = _errorhandler_ptr[]) where {M}
         # Create a new PHX handle structure.
         handle = Ref{Handle}(0)
-        status = ccall(_PHX_Create[], Status, (Ptr{Handle}, Ptr{Void}),
+        status = ccall(_PHX_Create[], Status, (Ptr{Handle}, Ptr{Nothing}),
                        handle, errorhandler)
         status == PHX_OK || throw(PHXError(status))
 
         # Create the instance and attach the destroy callback.
         cam = new{M}(0, handle[],
-                     Vector{Array{UInt8,2}}(0),
-                     Vector{FrameData}(0),
-                     Vector{ImageBuff}(0),
+                     Vector{Array{UInt8,2}}(undef, 0),
+                     Vector{FrameData}(undef, 0),
+                     Vector{ImageBuff}(undef, 0),
                      AcquisitionContext(),
                      500, false, false)
-        finalizer(cam, _destroy)
-        return cam
+        return finalizer(_destroy, cam)
     end
 end
 

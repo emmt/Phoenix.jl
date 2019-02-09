@@ -159,6 +159,6 @@ const CXP_TEST_ERROR_COUNT            = RegisterValue{UInt32,ReadWrite}(0x000040
 const CXP_TEST_PACKET_COUNT_TX        = RegisterValue{UInt64,ReadWrite}(0x00004028) # FIXME:
 const CXP_TEST_PACKET_COUNT_RX        = RegisterValue{UInt64,ReadWrite}(0x00004030) # FIXME:
 const CXP_HS_UP_CONNECTION            = RegisterValue{UInt32,ReadOnly}(0x0000403C)
-const CXP_MANUFACTURER                = RegisterValue{Void,Unreachable}(0x00006000)
+const CXP_MANUFACTURER                = RegisterValue{Nothing,Unreachable}(0x00006000)
 
 #---------------------------------------------------------------------------

@@ -10,7 +10,7 @@
 # "Expat" License.
 #
 # Copyright (C) 2016, Éric Thiébaut & Jonathan Léger.
-# Copyright (C) 2017, Éric Thiébaut.
+# Copyright (C) 2017-2019, Éric Thiébaut.
 #
 
 const SUCCESS = Cint(0)
@@ -33,7 +33,7 @@ const _offsetof_framedata_sec     = fieldoffset(FrameData, :sec)
 const _offsetof_framedata_usec    = fieldoffset(FrameData, :usec)
 const _offsetof_framedata_index   = fieldoffset(FrameData, :index)
 
-@assert _offsetof_context_imgctx == _offsetof_context_imgbuf + sizeof(Ptr{Void})
+@assert _offsetof_context_imgctx == _offsetof_context_imgbuf + sizeof(Ptr{Nothing})
 @assert _offsetof_context_usec == _offsetof_context_sec + sizeof(_typeof_tv_sec)
 
 # similar to unsafe_load but re-cast pointer as needed.
@@ -70,22 +70,22 @@ This method does not use any Julia internals (unless the pointer
 `_PHX_StreamRead[]` is incorrectly initialized) as you can figure out by
 calling:
 
-    code_native(Phoenix._callback, (Phoenix.Handle, UInt32, Ptr{Void}))
+    code_native(Phoenix._callback, (Phoenix.Handle, UInt32, Ptr{Nothing}))
 
 which has only a call to `jl_throw` if the above mentioned pointer is
 incorrect.  This callback is therefore thread safe.
 
 """
-function _callback(handle::Handle, events::UInt32, ctx::Ptr{Void})
-    #ccall(:printf, Cint, (Cstring, Cuint, Ptr{Void}),
+function _callback(handle::Handle, events::UInt32, ctx::Ptr{Nothing})
+    #ccall(:printf, Cint, (Cstring, Cuint, Ptr{Nothing}),
     #      "_callback called events=0x%0x, ctx=0x%p\n", events, ctx)
-    mutex = _load(Ptr{Void}, ctx + _offsetof_context_mutex)
-    cond  = _load(Ptr{Void}, ctx + _offsetof_context_cond)
-    if ccall(:pthread_mutex_lock, Cint, (Ptr{Void},), mutex) == SUCCESS
+    mutex = _load(Ptr{Nothing}, ctx + _offsetof_context_mutex)
+    cond  = _load(Ptr{Nothing}, ctx + _offsetof_context_cond)
+    if ccall(:pthread_mutex_lock, Cint, (Ptr{Nothing},), mutex) == SUCCESS
         if (PHX_INTRPT_BUFFER_READY & events) != 0
             # A new frame is available.
             # Take its arrival time stamp.
-            ccall(:gettimeofday, Cint, (Ptr{Void}, Ptr{Void}),
+            ccall(:gettimeofday, Cint, (Ptr{Nothing}, Ptr{Nothing}),
                   ctx + _offsetof_context_sec, C_NULL)
             # Get last captured image buffer.
             status = ccall(_PHX_StreamRead[],
@@ -97,7 +97,7 @@ function _callback(handle::Handle, events::UInt32, ctx::Ptr{Void})
                 _increment!(Int, ctx + _offsetof_context_overflows)
             else
                 # Store the index of the last captured image.
-                imgctx = _load(Ptr{Void}, ctx + _offsetof_context_imgctx)
+                imgctx = _load(Ptr{Nothing}, ctx + _offsetof_context_imgctx)
                 _store!(Int, ctx + _offsetof_context_index,
                         _load(Int, imgctx + _offsetof_framedata_index))
                 # Store the time stamp.
@@ -122,9 +122,9 @@ function _callback(handle::Handle, events::UInt32, ctx::Ptr{Void})
         end
         if (_load(UInt, ctx + _offsetof_context_events) & events) != 0
             # Signal condition for waiting thread.
-            ccall(:pthread_cond_signal, Cint, (Ptr{Void},), cond)
+            ccall(:pthread_cond_signal, Cint, (Ptr{Nothing},), cond)
         end
-        ccall(:pthread_mutex_unlock, Cint, (Ptr{Void},), mutex)
+        ccall(:pthread_mutex_unlock, Cint, (Ptr{Nothing},), mutex)
     end
     return nothing
 end
@@ -173,7 +173,7 @@ function wait(cam::Camera, timeout::TimeSpec, drop::Bool)
 
     # Lock mutex and wait for next image, taking care to not throw anything
     # while the mutex is locked.
-    code = ccall(:pthread_mutex_lock, Cint, (Ptr{Void},), ctx.mutex)
+    code = ccall(:pthread_mutex_lock, Cint, (Ptr{Nothing},), ctx.mutex)
     if code != SUCCESS
         index, errname, errcode = -1, :lock, Int(code)
     else
@@ -183,7 +183,7 @@ function wait(cam::Camera, timeout::TimeSpec, drop::Bool)
         while ctx.pending == 0
             # This code is prepared to face spurious signaled conditions.
             if isforever(timeout)
-                code = ccall(:pthread_cond_wait, Cint, (Ptr{Void}, Ptr{Void}),
+                code = ccall(:pthread_cond_wait, Cint, (Ptr{Nothing}, Ptr{Nothing}),
                              ctx.cond, ctx.mutex)
                 if code != SUCCESS
                     index, errname, errcode = -1, :wait, Int(code)
@@ -191,7 +191,7 @@ function wait(cam::Camera, timeout::TimeSpec, drop::Bool)
                 end
             else
                 code = ccall(:pthread_cond_timedwait, Cint,
-                             (Ptr{Void}, Ptr{Void}, Ptr{TimeSpec}),
+                             (Ptr{Nothing}, Ptr{Nothing}, Ptr{TimeSpec}),
                              ctx.cond, ctx.mutex, Ref(timeout))
                 if code != SUCCESS
                     index, errname, errcode = -1, :timedwait, Int(code)
@@ -222,7 +222,7 @@ function wait(cam::Camera, timeout::TimeSpec, drop::Bool)
             end
         end
         # Unlock the mutex (whatever the errors so far).
-        code = ccall(:pthread_mutex_unlock, Cint, (Ptr{Void},), ctx.mutex)
+        code = ccall(:pthread_mutex_unlock, Cint, (Ptr{Nothing},), ctx.mutex)
         if code != SUCCESS && index ≥ 0
             index, errname, errcode = -1, :unlock, Int(code)
         end
@@ -242,7 +242,7 @@ function wait(cam::Camera, timeout::TimeSpec, drop::Bool)
                errname == :getbuffer ?
                "failed to get image buffer [$(geterrormessage(errcode))]" :
                errname == :releasebuffer ?
-               "failed to release image buffer [$(geterrormessage(errcode))]":
+               "failed to release image buffer [$(geterrormessage(errcode))]" :
                "some error occured while waiting for next frame [$errname, $errcode]")
         error(msg)
     end
@@ -267,7 +267,7 @@ function read(cam::Camera, ::Type{T}, num::Int;
     final = TimeSpec(time() + convert(Float64, timeout))
 
     # Start acquisition with given callback and collect images.
-    imgs = Vector{Array{T,2}}(num)
+    imgs = Vector{Array{T,2}}(undef, num)
     cnt = 0
     start(cam, T, num + 1) # FIXME: hack to avoid loosing one frame
     while cnt < num
@@ -285,7 +285,7 @@ function read(cam::Camera, ::Type{T}, num::Int;
             end
         catch err
             if truncate && isa(err, TimeoutError)
-                warn("Acquisition timeout after $cnt image(s)")
+                @warn "Acquisition timeout after $cnt image(s)"
                 num = cnt
                 resize!(imgs, num)
             else
@@ -338,7 +338,7 @@ end
 function getcapturebitstype(cam::Camera)
     bufpix = capture_format(cam[PHX_DST_FORMAT])
     T = equivalentbitstype(bufpix)
-    return (T == Void ? UInt8 : T)
+    return (T == Nothing ? UInt8 : T)
 end
 
 # Extend method.
@@ -402,7 +402,7 @@ function start(cam::Camera, ::Type{T}, nbufs::Int = 2) where {T}
     end
     arrbits = sizeof(T)*8
     if arrbits != dstbits
-        warn("capture format does not exactly fit in chosen pixel type")
+        @warn "capture format does not exactly fit in chosen pixel type"
     end
     width = div(width*dstbits + arrbits - 1, arrbits) # roundup array width
     cam[PHX_ROI_DST_XOFFSET] = 0
@@ -503,21 +503,22 @@ function stop(cam::Camera, cmd::Acq = PHX_STOP)
     if cam.state == 0
         error("camera must be open")
     elseif cam.state == 1
-        warn("no acquisition is running")
+        @warn "no acquisition is running"
     elseif cam.state == 2
         # Stop/abort acquisition.
         status = _readstream(cam, cmd, C_NULL)
         if status != PHX_OK
-            warn("Failure in ", :PHX_StreamRead, " with ",
-                 (cmd == PHX_STOP  ? :PHX_STOP :
-                  cmd == PHX_ABORT ? :PHX_ABORT : cmd),
-                 " :\n         ", geterrormessage(status))
+            @warn string("Failure in ", :PHX_StreamRead, " with ",
+                         (cmd == PHX_STOP  ? :PHX_STOP :
+                          cmd == PHX_ABORT ? :PHX_ABORT : cmd),
+                         " :\n         ", geterrormessage(status))
         end
         # Unlock all buffers.
         status = _readstream(cam, PHX_UNLOCK, C_NULL)
         if status != PHX_OK && status != PHX_ERROR_NOT_IMPLEMENTED
-            warn("Failure in ", :PHX_StreamRead, " with ", :PHX_UNLOCK,
-                 ":\n         ", geterrormessage(status))
+            @warn string("Failure in ", :PHX_StreamRead, " with ",
+                         :PHX_UNLOCK, ":\n         ",
+                         geterrormessage(status))
         end
         # Call specific stop command.
         try
