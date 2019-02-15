@@ -183,7 +183,8 @@ function wait(cam::Camera, timeout::TimeSpec, drop::Bool)
         while ctx.pending == 0
             # This code is prepared to face spurious signaled conditions.
             if isforever(timeout)
-                code = ccall(:pthread_cond_wait, Cint, (Ptr{Nothing}, Ptr{Nothing}),
+                code = ccall(:pthread_cond_wait, Cint,
+                             (Ptr{Nothing}, Ptr{Nothing}),
                              ctx.cond, ctx.mutex)
                 if code != SUCCESS
                     index, errname, errcode = -1, :wait, Int(code)
@@ -256,15 +257,12 @@ end
 # Extend method.
 function read(cam::Camera, ::Type{T}, num::Int;
               skip::Integer = 0,
-              timeout::Real = defaulttimeout(cam, num + skip),
+              timeout::Real = defaulttimeout(cam),
               truncate::Bool = false) where {T}
     # Check arguments.
     num ≥ 1 || throw(ArgumentError("invalid number of images"))
     skip ≥ 0 || throw(ArgumentError("invalid number of images to skip"))
     timeout > zero(timeout) || throw(ArgumentError("invalid timeout"))
-
-    # Final time.
-    final = TimeSpec(time() + convert(Float64, timeout))
 
     # Start acquisition with given callback and collect images.
     imgs = Vector{Array{T,2}}(undef, num)
@@ -305,13 +303,10 @@ end
 # Extend method.
 function read(cam::Camera, ::Type{T};
               skip::Integer = 0,
-              timeout::Real = defaulttimeout(cam, 1 + skip)) where {T}
+              timeout::Real = defaulttimeout(cam)) where {T}
     # Check arguments.
     skip ≥ 0 || throw(ArgumentError("invalid number of images to skip"))
     timeout > zero(timeout) || throw(ArgumentError("invalid timeout"))
-
-    # Final time.
-    final = TimeSpec(time() + convert(Float64, timeout))
 
     # Acquire a single image.
     start(cam, T, (skip > zero(skip) ? 2 : 1))
