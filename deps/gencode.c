@@ -181,16 +181,16 @@ int main()
   println("# memory (used to specify user allocated image buffers).  It can be used");
   println("# either for virtual or physical addresses.");
   println("struct ImageBuff");
-  println("    pvAddress::Ptr{Nothing}");
-  println("    pvContext::Ptr{Nothing}");
+  println("    pvAddress::Ptr{Cvoid}");
+  println("    pvContext::Ptr{Cvoid}");
   println("end");
   newline();
   println("# This structure is used to specify the address, size and context of a");
   println("# block of memory (used to specify user locked image buffers).");
   println("struct UserBuff");
-  println("    pvAddress::Ptr{Nothing}");
+  println("    pvAddress::Ptr{Cvoid}");
   println("    qwSizeBytes::UInt64");
-  println("    pvContext::Ptr{Nothing}");
+  println("    pvContext::Ptr{Cvoid}");
   println("end");
   newline();
   println("struct TimeStamp");
@@ -1597,9 +1597,9 @@ int main()
   /*define("Param{String,ReadWrite}",   PHX_COMMS_POSTACQ,  NULL);*/
 
   println("# Miscellaneous Settings");
-  define("Param{ParamValue,ReadWrite}",   PHX_DATASRC,       NULL);
-  define("Param{Ptr{Nothing},ReadWrite}", PHX_EVENT_CONTEXT, NULL);
-  define("Param{ParamValue,ReadWrite}",   PHX_DATARATE_TEST, NULL);
+  define("Param{ParamValue,ReadWrite}", PHX_DATASRC,       NULL);
+  define("Param{Ptr{Cvoid},ReadWrite}", PHX_EVENT_CONTEXT, NULL);
+  define("Param{ParamValue,ReadWrite}", PHX_DATARATE_TEST, NULL);
 
   println("# Error Information");
   define("Param{Status,ReadOnly}", PHX_ERROR_FIRST_ERRNUM,    NULL);

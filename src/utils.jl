@@ -9,8 +9,8 @@
 # This file is part of the `Phoenix.jl` package which is licensed under the MIT
 # "Expat" License.
 #
+# Copyright (C) 2017-2019, Éric Thiébaut (https://github.com/emmt/Phoenix.jl).
 # Copyright (C) 2016, Éric Thiébaut & Jonathan Léger.
-# Copyright (C) 2017, Éric Thiébaut.
 #
 
 function histogram(arr::AbstractArray{T,N}) where {T <: Integer, N}
@@ -396,7 +396,7 @@ which yields the is the same as
 """
 function gettimeofday()
     tvref = Ref{TimeVal}()
-    status = ccall(:gettimeofday, Cint, (Ptr{TimeVal}, Ptr{Nothing}),
+    status = ccall(:gettimeofday, Cint, (Ptr{TimeVal}, Ptr{Cvoid}),
                    tvref, C_NULL)
     status == SUCCESS || error("gettimeofday failed")
     return tvref[]

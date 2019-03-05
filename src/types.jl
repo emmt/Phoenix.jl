@@ -8,8 +8,8 @@
 # This file is part of the `Phoenix.jl` package which is licensed under the MIT
 # "Expat" License.
 #
+# Copyright (C) 2017-2019, Éric Thiébaut (https://github.com/emmt/Phoenix.jl).
 # Copyright (C) 2016, Éric Thiébaut & Jonathan Léger.
-# Copyright (C) 2017, Éric Thiébaut.
 #
 
 # Custom exception to report errors.
@@ -51,11 +51,11 @@ See also: [`read`](@ref), [`start`](@ref), [`wait`](@ref).
 
 """
 mutable struct AcquisitionContext
-    mutex::Ptr{Nothing}   # Lock to protect this structure
-    cond::Ptr{Nothing}    # Condition to signal events
+    mutex::Ptr{Cvoid}     # Lock to protect this structure
+    cond::Ptr{Cvoid}      # Condition to signal events
     # The 2 following fields should exactly match `ImageBuff` structure
-    imgbuf::Ptr{Nothing}  # Address of last captured image buffer
-    imgctx::Ptr{Nothing}  # Address of context associated with last ...
+    imgbuf::Ptr{Cvoid}    # Address of last captured image buffer
+    imgctx::Ptr{Cvoid}    # Address of context associated with last ...
     index::Int            # Index of last captured image buffer
     # The 2 following fields should exactly match `TimeVal` structure
     sec::_typeof_tv_sec   # Time stamp (seconds) of last captured image
@@ -72,7 +72,7 @@ mutable struct AcquisitionContext
         if ctx.mutex == C_NULL
             throw(OutOfMemoryError())
         end
-        if ccall(:pthread_mutex_init, Cint, (Ptr{Nothing}, Ptr{Nothing}),
+        if ccall(:pthread_mutex_init, Cint, (Ptr{Cvoid}, Ptr{Cvoid}),
                  ctx.mutex, C_NULL) != SUCCESS
             _destroy(ctx)
             error("pthread_mutex_init failed")
@@ -82,7 +82,7 @@ mutable struct AcquisitionContext
             _destroy(ctx)
             throw(OutOfMemoryError())
         end
-        if ccall(:pthread_cond_init, Cint, (Ptr{Nothing}, Ptr{Nothing}),
+        if ccall(:pthread_cond_init, Cint, (Ptr{Cvoid}, Ptr{Cvoid}),
                  ctx.cond, C_NULL) != SUCCESS
             _destroy(ctx)
             error("pthread_cond_init failed")
@@ -111,13 +111,13 @@ function _destroy(ctx::AcquisitionContext)
     if ctx.cond != C_NULL
         cond = ctx.cond
         ctx.cond = C_NULL
-        ccall(:pthread_cond_destroy, Cint, (Ptr{Nothing},), cond)
+        ccall(:pthread_cond_destroy, Cint, (Ptr{Cvoid},), cond)
         Libc.free(cond)
     end
     if ctx.mutex != C_NULL
         mutex = ctx.mutex
         ctx.mutex = C_NULL
-        ccall(:pthread_mutex_destroy, Cint, (Ptr{Nothing},), mutex)
+        ccall(:pthread_mutex_destroy, Cint, (Ptr{Cvoid},), mutex)
         Libc.free(mutex)
     end
 end
@@ -142,10 +142,10 @@ mutable struct Camera{M<:CameraModel} <: ScientificCamera
     swap::Bool # swap bytes for read/write control connection?
     coaxpress::Bool # is it a CoaXPress camera?
 
-    function Camera{M}(errorhandler::Ptr{Nothing} = _errorhandler_ptr[]) where {M}
+    function Camera{M}(errorhandler::Ptr{Cvoid} = _errorhandler_ptr[]) where {M}
         # Create a new PHX handle structure.
         handle = Ref{Handle}(0)
-        status = ccall(_PHX_Create[], Status, (Ptr{Handle}, Ptr{Nothing}),
+        status = ccall(_PHX_Create[], Status, (Ptr{Handle}, Ptr{Cvoid}),
                        handle, errorhandler)
         status == PHX_OK || throw(PHXError(status))
 

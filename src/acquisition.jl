@@ -9,8 +9,8 @@
 # This file is part of the `Phoenix.jl` package which is licensed under the MIT
 # "Expat" License.
 #
+# Copyright (C) 2017-2019, Éric Thiébaut (https://github.com/emmt/Phoenix.jl).
 # Copyright (C) 2016, Éric Thiébaut & Jonathan Léger.
-# Copyright (C) 2017-2019, Éric Thiébaut.
 #
 
 const SUCCESS = Cint(0)
@@ -33,7 +33,7 @@ const _offsetof_framedata_sec     = fieldoffset(FrameData, :sec)
 const _offsetof_framedata_usec    = fieldoffset(FrameData, :usec)
 const _offsetof_framedata_index   = fieldoffset(FrameData, :index)
 
-@assert _offsetof_context_imgctx == _offsetof_context_imgbuf + sizeof(Ptr{Nothing})
+@assert _offsetof_context_imgctx == _offsetof_context_imgbuf + sizeof(Ptr{Cvoid})
 @assert _offsetof_context_usec == _offsetof_context_sec + sizeof(_typeof_tv_sec)
 
 # similar to unsafe_load but re-cast pointer as needed.
@@ -70,22 +70,22 @@ This method does not use any Julia internals (unless the pointer
 `_PHX_StreamRead[]` is incorrectly initialized) as you can figure out by
 calling:
 
-    code_native(Phoenix._callback, (Phoenix.Handle, UInt32, Ptr{Nothing}))
+    code_native(Phoenix._callback, (Phoenix.Handle, UInt32, Ptr{Cvoid}))
 
 which has only a call to `jl_throw` if the above mentioned pointer is
 incorrect.  This callback is therefore thread safe.
 
 """
-function _callback(handle::Handle, events::UInt32, ctx::Ptr{Nothing})
-    #ccall(:printf, Cint, (Cstring, Cuint, Ptr{Nothing}),
+function _callback(handle::Handle, events::UInt32, ctx::Ptr{Cvoid})
+    #ccall(:printf, Cint, (Cstring, Cuint, Ptr{Cvoid}),
     #      "_callback called events=0x%0x, ctx=0x%p\n", events, ctx)
-    mutex = _load(Ptr{Nothing}, ctx + _offsetof_context_mutex)
-    cond  = _load(Ptr{Nothing}, ctx + _offsetof_context_cond)
-    if ccall(:pthread_mutex_lock, Cint, (Ptr{Nothing},), mutex) == SUCCESS
+    mutex = _load(Ptr{Cvoid}, ctx + _offsetof_context_mutex)
+    cond  = _load(Ptr{Cvoid}, ctx + _offsetof_context_cond)
+    if ccall(:pthread_mutex_lock, Cint, (Ptr{Cvoid},), mutex) == SUCCESS
         if (PHX_INTRPT_BUFFER_READY & events) != 0
             # A new frame is available.
             # Take its arrival time stamp.
-            ccall(:gettimeofday, Cint, (Ptr{Nothing}, Ptr{Nothing}),
+            ccall(:gettimeofday, Cint, (Ptr{Cvoid}, Ptr{Cvoid}),
                   ctx + _offsetof_context_sec, C_NULL)
             # Get last captured image buffer.
             status = ccall(_PHX_StreamRead[],
@@ -97,7 +97,7 @@ function _callback(handle::Handle, events::UInt32, ctx::Ptr{Nothing})
                 _increment!(Int, ctx + _offsetof_context_overflows)
             else
                 # Store the index of the last captured image.
-                imgctx = _load(Ptr{Nothing}, ctx + _offsetof_context_imgctx)
+                imgctx = _load(Ptr{Cvoid}, ctx + _offsetof_context_imgctx)
                 _store!(Int, ctx + _offsetof_context_index,
                         _load(Int, imgctx + _offsetof_framedata_index))
                 # Store the time stamp.
@@ -122,9 +122,9 @@ function _callback(handle::Handle, events::UInt32, ctx::Ptr{Nothing})
         end
         if (_load(UInt, ctx + _offsetof_context_events) & events) != 0
             # Signal condition for waiting thread.
-            ccall(:pthread_cond_signal, Cint, (Ptr{Nothing},), cond)
+            ccall(:pthread_cond_signal, Cint, (Ptr{Cvoid},), cond)
         end
-        ccall(:pthread_mutex_unlock, Cint, (Ptr{Nothing},), mutex)
+        ccall(:pthread_mutex_unlock, Cint, (Ptr{Cvoid},), mutex)
     end
     return nothing
 end
@@ -173,7 +173,7 @@ function wait(cam::Camera, timeout::TimeSpec, drop::Bool)
 
     # Lock mutex and wait for next image, taking care to not throw anything
     # while the mutex is locked.
-    code = ccall(:pthread_mutex_lock, Cint, (Ptr{Nothing},), ctx.mutex)
+    code = ccall(:pthread_mutex_lock, Cint, (Ptr{Cvoid},), ctx.mutex)
     if code != SUCCESS
         index, errname, errcode = -1, :lock, Int(code)
     else
@@ -184,7 +184,7 @@ function wait(cam::Camera, timeout::TimeSpec, drop::Bool)
             # This code is prepared to face spurious signaled conditions.
             if isforever(timeout)
                 code = ccall(:pthread_cond_wait, Cint,
-                             (Ptr{Nothing}, Ptr{Nothing}),
+                             (Ptr{Cvoid}, Ptr{Cvoid}),
                              ctx.cond, ctx.mutex)
                 if code != SUCCESS
                     index, errname, errcode = -1, :wait, Int(code)
@@ -192,7 +192,7 @@ function wait(cam::Camera, timeout::TimeSpec, drop::Bool)
                 end
             else
                 code = ccall(:pthread_cond_timedwait, Cint,
-                             (Ptr{Nothing}, Ptr{Nothing}, Ptr{TimeSpec}),
+                             (Ptr{Cvoid}, Ptr{Cvoid}, Ptr{TimeSpec}),
                              ctx.cond, ctx.mutex, Ref(timeout))
                 if code != SUCCESS
                     index, errname, errcode = -1, :timedwait, Int(code)
@@ -223,7 +223,7 @@ function wait(cam::Camera, timeout::TimeSpec, drop::Bool)
             end
         end
         # Unlock the mutex (whatever the errors so far).
-        code = ccall(:pthread_mutex_unlock, Cint, (Ptr{Nothing},), ctx.mutex)
+        code = ccall(:pthread_mutex_unlock, Cint, (Ptr{Cvoid},), ctx.mutex)
         if code != SUCCESS && index ≥ 0
             index, errname, errcode = -1, :unlock, Int(code)
         end

@@ -9,8 +9,8 @@
 # This file is part of the `Phoenix.jl` package which is licensed under the MIT
 # "Expat" License.
 #
+# Copyright (C) 2017-2019, Éric Thiébaut (https://github.com/emmt/Phoenix.jl).
 # Copyright (C) 2016, Éric Thiébaut & Jonathan Léger.
-# Copyright (C) 2017-2019, Éric Thiébaut.
 #
 
 # Override bitwise operators for frame grabber parameters.
@@ -105,8 +105,8 @@ function getparam(cam::Camera,
 end
 
 function getparam(cam::Camera,
-                  key::Param{Ptr{Nothing},A}) :: Ptr{Nothing} where {A<:Readable}
-    buf = Ref{Ptr{Nothing}}()
+                  key::Param{Ptr{Cvoid},A}) :: Ptr{Cvoid} where {A<:Readable}
+    buf = Ref{Ptr{Cvoid}}()
     checkstatus(_getparam(cam, key, buf))
     return buf[]
 end
@@ -137,7 +137,7 @@ getparam(cam::Camera, key::Register) =
 function _getparam(cam::Camera,
                    key::Param{T,A},
                    buf::Union{Ptr,Ref}) where {T,A<:Readable}
-    ccall(_PHX_ParameterGet[], Status, (Handle, Cuint, Ptr{Nothing}),
+    ccall(_PHX_ParameterGet[], Status, (Handle, Cuint, Ptr{Cvoid}),
           cam.handle, key.ident, buf)
 end
 
@@ -216,7 +216,7 @@ function setparam!(cam::Camera,
 end
 
 function setparam!(cam::Camera,
-                   key::Param{Ptr{Nothing},A},
+                   key::Param{Ptr{Cvoid},A},
                    buf::Union{Vector,Ptr,Ref}) where {A<:Writable}
     checkstatus(_setparam!(cam, key, buf))
 end
@@ -268,7 +268,7 @@ setparam!(cam::Camera, key::Register, val) =
 function _setparam!(cam::Camera,
                     key::Param{T,A},
                     buf::Union{Ptr,Ref,Vector}) where {T,A<:Writable}
-    ccall(_PHX_ParameterSet[], Status, (Handle, Cuint, Ptr{Nothing}),
+    ccall(_PHX_ParameterSet[], Status, (Handle, Cuint, Ptr{Cvoid}),
           cam.handle, key.ident, buf)
 end
 
@@ -291,7 +291,7 @@ hardware.
 
 """
 function flushcache(cam::Camera)
-    cam[Param{Ptr{Nothing},WriteOnly}(PHX_DUMMY_PARAM|PHX_CACHE_FLUSH)] = C_NULL
+    cam[Param{Ptr{Cvoid},WriteOnly}(PHX_DUMMY_PARAM|PHX_CACHE_FLUSH)] = C_NULL
     nothing
 end
 
@@ -317,7 +317,7 @@ function saveconfig(cam::Camera, name::AbstractString,
                     what::Integer = PHX_SAVE_ALL)
     flushcache(cam)
     status = ccall(_PHX_Action[], Status,
-                   (Handle, Action, ActionParam, Ptr{Nothing}),
+                   (Handle, Action, ActionParam, Ptr{Cvoid}),
                    cam.handle, PHX_CONFIG_SAVE, what, cstring(name))
     checkstatus(status)
 end
@@ -346,19 +346,19 @@ const _PHX_FUNCTIONS = (:_PHX_Create, :_PHX_Open, :_PHX_Close, :_PHX_Destroy,
                         :_PHX_ControlWrite, :_PHX_Action,
                         :_PHX_ErrCodeDecode, :_PHX_ErrHandlerDefault)
 for sym in _PHX_FUNCTIONS
-    @eval const $sym = Ref{Ptr{Nothing}}(0)
+    @eval const $sym = Ref{Ptr{Cvoid}}(0)
 end
 
 function _errorhandler end
 function _callback end
 
-const _errorhandler_ptr = Ref{Ptr{Nothing}}(0)
-const _callback_ptr = Ref{Ptr{Nothing}}(0)
+const _errorhandler_ptr = Ref{Ptr{Cvoid}}(0)
+const _callback_ptr = Ref{Ptr{Cvoid}}(0)
 function __init__()
     _errorhandler_ptr[] = @cfunction(_errorhandler, Nothing,
                                      (Ptr{Cchar}, Status, Ptr{Cchar}))
     _callback_ptr[] = @cfunction(_callback, Nothing,
-                                 (Handle, UInt32, Ptr{Nothing}))
+                                 (Handle, UInt32, Ptr{Cvoid}))
 
     # Manage to load the dynamic library and its symbols with appropriate
     # flags.  It is still needed to start Julia with the correct dynamic library
@@ -524,7 +524,7 @@ a pointer).
 
 """
 _readstream(cam::Camera, cmd::Acq, ptr::Union{Ref,Ptr}) =
-    ccall(_PHX_StreamRead[], Status, (Handle, Acq, Ptr{Nothing}),
+    ccall(_PHX_StreamRead[], Status, (Handle, Acq, Ptr{Cvoid}),
           cam.handle, cmd, ptr)
 
 """
@@ -561,7 +561,7 @@ See also: [`_readregister`](@ref), [`_writecontrol`](@ref).
 function _readcontrol(handle::Handle, src::ControlPort, param, buf,
                       num::Ref{UInt32}, timeout::Integer)
     ccall(_PHX_ControlRead[], Status,
-          (Handle, UInt32, Ptr{Nothing}, Ptr{Nothing}, Ptr{UInt32}, UInt32),
+          (Handle, UInt32, Ptr{Cvoid}, Ptr{Cvoid}, Ptr{UInt32}, UInt32),
           handle, src.port, param, buf, num, timeout)
 end
 
@@ -599,6 +599,6 @@ See also: [`_writeregister`](@ref), [`_readcontrol`](@ref).
 function _writecontrol(handle::Handle, src::ControlPort, param, buf,
                        num::Ref{UInt32}, timeout::Integer)
     ccall(_PHX_ControlWrite[], Status,
-          (Handle, UInt32, Ptr{Nothing}, Ptr{Nothing}, Ptr{UInt32}, UInt32),
+          (Handle, UInt32, Ptr{Cvoid}, Ptr{Cvoid}, Ptr{UInt32}, UInt32),
           handle, src.port, param, buf, num, timeout)
 end
