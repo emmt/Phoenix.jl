@@ -8,7 +8,7 @@
 # This file is part of the `Phoenix.jl` package which is licensed under the MIT
 # "Expat" License.
 #
-# Copyright (C) 2017-2019, Éric Thiébaut.
+# Copyright (C) 2017-2019, Éric Thiébaut (https://github.com/emmt/Phoenix.jl).
 # Copyright (C) 2016, Éric Thiébaut & Jonathan Léger.
 #
 
@@ -832,30 +832,41 @@ end
 # This overloading of the method is to treat specifically certain problematic
 # parameters such as the pixel format.
 function setparam!(cam::Camera{MikrotronMC408xModel},
-                   key::RegisterValue{T,A}, val::T) where {T<:Real,A<:Writable}
+                   key::RegisterValue{T,A},
+                   val::T) :: T where {T<:Real,A<:Writable}
+    #
     # Unfortunately, setting some parameters (as the pixel format or the gamma
     # correction) returns an error with an absurd code
     # (`PHX_ERROR_MALLOC_FAILED`) even if the value has been correctly set.
-    # The error cannot be just ignored as further reads of registers yields
+    # The error cannot be just ignored as further reads of registers yield
     # wrong values.  The strategy is to close and re-open the camera when such
     # an error occurs which solves the problem in practice to the cost of the
     # time spent to close and re-open (0.4 sec.).  To avoid alarming the user,
     # printing of error messages is disabled during this process.
+    #
+    # Other (unsuccessful) strategies have been tried:
+    # - Calling PHX_ControlReset yields a PHX_ERROR_BAD_HANDLE error.
+    # - Re-reading the register until its value is OK (this does not work for
+    #   write-only registers).
+    #
     errmode = printerror(false) # temporarily switch off reporting of errors
     buf = Ref{T}(val)
     status = _setparam!(cam, key, buf)
     printerror(errmode) # restore previous mode
-    if status == PHX_ERROR_MALLOC_FAILED && cam.state == 1
+    if status == PHX_ERROR_MALLOC_FAILED && 1 ≤ cam.state ≤ 2
+        if cam.state == 2
+            @warn "Acquisition will be aborted due to setting a bogus parameter"
+        end
         close(cam)
         open(cam; quiet=true)
-        if _getparam(cam, key, buf) == PHX_OK && buf[] == val
-            return nothing
+        if _getparam(cam, key, buf) != PHX_OK || buf[] != val
+            error("failed to change register value")
         end
-        error("failed to change register value")
     elseif status != PHX_OK
         _printlasterror()
+        checkstatus(status)
     end
-    checkstatus(status)
+    return val
 end
 
 """
