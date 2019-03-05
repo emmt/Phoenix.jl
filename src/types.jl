@@ -133,7 +133,7 @@ abstract type CameraModel end
 
 mutable struct Camera{M<:CameraModel} <: ScientificCamera
     state::Int # 0 initially, 1 when camera open, 2 while acquiring
-    handle::Handle
+    handle::Handle # 0 before calling PHX_Create or after calling PHX_Destroy
     imgs::Vector{Array{T,2}} where {T} # images for acquisition
     ctxs::Vector{FrameData} # metadata for captured images
     bufs::Vector{ImageBuff} # virtual image buffers currently used
@@ -141,6 +141,7 @@ mutable struct Camera{M<:CameraModel} <: ScientificCamera
     timeout::UInt32 # time out (in ms) for reading/writing registers
     swap::Bool # swap bytes for read/write control connection?
     coaxpress::Bool # is it a CoaXPress camera?
+    debug::Bool # print debug messages?
 
     function Camera{M}(errorhandler::Ptr{Cvoid} = _errorhandler_ptr[]) where {M}
         # Create a new PHX handle structure.
@@ -155,27 +156,29 @@ mutable struct Camera{M<:CameraModel} <: ScientificCamera
                      Vector{FrameData}(undef, 0),
                      Vector{ImageBuff}(undef, 0),
                      AcquisitionContext(),
-                     500, false, false)
+                     500, false, false, false)
         return finalizer(_destroy, cam)
     end
 end
 
 function _destroy(cam::Camera)
     if cam.handle != 0
-        if cam.state > 1
+        if cam.state == 2
             # Abort acquisition (using the private routine which does not throw
             # exceptions).
             _readstream(cam, PHX_ABORT, C_NULL)
             _readstream(cam, PHX_UNLOCK, C_NULL)
-            stophook(cam)
+            _stophook(cam)
+            cam.state = 1
         end
-        ref = Ref(cam.handle)
-        if cam.state > 0
+        if cam.state == 1
             # Close the camera.
-            ccall(_PHX_Close[], Status, (Ptr{Handle},), ref)
+            cam.state = 0
+            _close(cam)
         end
         # Release other ressources.
-        ccall(_PHX_Destroy[], Status, (Ptr{Handle},), ref)
+        ref = Ref(cam.handle)
         cam.handle = 0 # to avoid doing this more than once
+        ccall(_PHX_Destroy[], Status, (Ptr{Handle},), ref)
     end
 end

@@ -14,10 +14,11 @@
 #
 
 # Override bitwise operators for frame grabber parameters.
+import Base: |, &, ~
 (~)(x::Param{T,A}) where {T,A} = Param{T,A}(~x.ident)
 (|)(x::Param{T,A}, y::Integer) where {T,A} = Param{T,A}(x.ident | y)
 (&)(x::Param{T,A}, y::Integer) where {T,A} = Param{T,A}(x.ident & y)
-xor(x::Param{T,A}, y::Integer) where {T,A} = Param{T,A}(xor(x.ident, y))
+Base.xor(x::Param{T,A}, y::Integer) where {T,A} = Param{T,A}(xor(x.ident, y))
 
 # Conversion to integer values of frame grabber parameters.
 convert(::Type{ParamValue}, x::Param) = x.ident
@@ -302,10 +303,8 @@ makes sure that cached frame grabber parameters are effectively written to the
 hardware.
 
 """
-function flushcache(cam::Camera)
-    cam[Param{Ptr{Cvoid},WriteOnly}(PHX_DUMMY_PARAM|PHX_CACHE_FLUSH)] = C_NULL
-    return nothing
-end
+flushcache(cam::Camera) =
+    setparam!(cam, PHX_DUMMY_PARAM|PHX_CACHE_FLUSH, nothing)
 
 """
     saveconfig(cam, name, what = PHX_SAVE_ALL)
@@ -339,13 +338,24 @@ end
 # ===================================
 #
 
-function send(cam::Camera, reg::RegisterCommand{T}) where {T}
+"""
+`exec(cam, cmd)` executes CoaXPress command `cmd` for camera `cam`, throwing
+exception in case of error.
+
+`_exec(cam, cmd)` does the same but returns a status instead of throwing exceptions
+
+"""
+exec(cam::Camera, reg::RegisterCommand{T}) where {T} =
+    checkstatus(_exec(cam, reg))
+
+function _exec(cam::Camera, reg::RegisterCommand{T}) where {T}
     data = Ref{T}(cam.swap ? bswap(reg.value) : reg.value)
-    checkstatus(_writeregister(cam, reg, data, sizeof(T)))
+    return _writeregister(cam, reg, data, sizeof(T))
 end
 
-readstream(args...) = checkstatus(_readstream(args...))
+readstream(cam::Camera, args...) = checkstatus(_readstream(cam, args...))
 
+_debug(cam::Camera, args...) = cam.debug && println(args...)
 
 #-------------------------------------------------------------------------------
 # Low Level Wrapper to Phoenix Dynamic Library
@@ -367,9 +377,9 @@ function _callback end
 const _errorhandler_ptr = Ref{Ptr{Cvoid}}(0)
 const _callback_ptr = Ref{Ptr{Cvoid}}(0)
 function __init__()
-    _errorhandler_ptr[] = @cfunction(_errorhandler, Nothing,
+    _errorhandler_ptr[] = @cfunction(_errorhandler, Cvoid,
                                      (Ptr{Cchar}, Status, Ptr{Cchar}))
-    _callback_ptr[] = @cfunction(_callback, Nothing,
+    _callback_ptr[] = @cfunction(_callback, Cvoid,
                                  (Handle, UInt32, Ptr{Cvoid}))
 
     # Manage to load the dynamic library and its symbols with appropriate
@@ -412,12 +422,9 @@ function Base.open(cam::Camera;
                    quiet::Bool = false)
     # Check state.
     if cam.state != 0
-        if cam.state == 1 || cam.state == 2
-            @warn "camera has already been opened"
-            return cam
-        else
-            error("camera structure corrupted")
-        end
+        1 ≤ cam.state ≤ 2 || error("camera structure corrupted")
+        @warn "camera has already been opened"
+        return cam
     end
 
     # Create references for parameter values and camera handle (these
@@ -479,13 +486,13 @@ function Base.open(cam::Camera;
     end
 
     # Apply specific post-open configuration.
-    openhook(cam)
+    _openhook(cam)
 
     return cam
 end
 
 """
-    openhook(cam)
+    _openhook(cam)
 
 performs specific operations just after camera `cam` has been opened.  This
 function should return nothing but may throw exceptions to signal errors.
@@ -493,7 +500,7 @@ function should return nothing but may throw exceptions to signal errors.
 See also: [`open`](@ref)
 
 """
-openhook(cam::Camera) = nothing
+_openhook(cam::Camera) = nothing
 
 """
     close(cam)
@@ -513,12 +520,8 @@ function Base.close(cam::Camera)
     if cam.state == 0
         @warn "camera has already been closed"
     elseif cam.state == 1
-        # Note that PHX_Close requires the address of the handle but left its
-        # contents unchanged.
         cam.state = 0 # avoid closing more than once
-        ref = Ref(cam.handle)
-        status = ccall(_PHX_Close[], Status, (Ptr{Handle},), ref)
-        #cam.handle = ref[] # not needed (cf. note above)?
+        status = _close(cam)
         status == PHX_OK || throw(PHXError(status))
     else
         error("camera structure corrupted")
@@ -527,6 +530,16 @@ function Base.close(cam::Camera)
 end
 
 Base.isopen(cam::Camera) = (1 ≤ cam.state ≤ 2)
+
+# Call PHX_Close, does no checkings but the validity of assumptions and return status.
+function _close(cam::Camera)
+    # Note that PHX_Close requires the address of the handle but left its
+    # contents unchanged.
+    ref = Ref(cam.handle)
+    status = ccall(_PHX_Close[], Status, (Ptr{Handle},), ref)
+    @assert cam.handle == ref[] # cf. note above
+    return status
+end
 
 """
     _readstream(cam, cmd, ptr) -> status

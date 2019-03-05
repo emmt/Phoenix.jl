@@ -385,7 +385,7 @@ release(cam::Camera) =
 #   `PHX_DST_PTRS_VIRT` and `PHX_DST_PTR_TYPE` are set to require the frame
 #   grabber to use the provided image buffers.
 #
-function start(cam::Camera, ::Type{T}, nbufs::Int = 2) where {T}
+function start(cam::Camera, ::Type{T}, nbufs::Int = 4) where {T}
     # Check arguments.
     if cam.state != 1
         if cam.state == 0
@@ -397,6 +397,12 @@ function start(cam::Camera, ::Type{T}, nbufs::Int = 2) where {T}
         end
     end
     nbufs ≥ 1 || throw(ArgumentError("invalid number of image buffers"))
+
+    _debug(cam, "abort acquisition...")
+    readstream(cam, PHX_ABORT, C_NULL)
+    _stophook(cam)
+
+    _debug(cam, "set acquisition parameters...")
 
     # FIXME: Benchmark this to see whether it is worth avoiding recreating the
     #        virtual buffers.
@@ -474,12 +480,19 @@ function start(cam::Camera, ::Type{T}, nbufs::Int = 2) where {T}
     cam.context.events    = PHX_INTRPT_BUFFER_READY;
     cam[PHX_EVENT_CONTEXT] = Ref(cam.context)
 
+    # Explicitly flush configuration even though this is automatically done by
+    # the readstream() command.
+    _debug(cam, "flush cache...")
+    flushcache(cam)
+
     # Start acquisition with our own callback.
+    _debug(cam, "start acquisition...")
     readstream(cam, PHX_START, _callback_ptr[])
 
     # Send specific start command, aborting acquisition in case of errors.
+    _debug(cam, "apply start hook...")
     try
-        starthook(cam)
+        _starthook(cam)
     catch err
         _readstream(cam, PHX_ABORT, C_NULL)
         _readstream(cam, PHX_UNLOCK, C_NULL)
@@ -487,27 +500,17 @@ function start(cam::Camera, ::Type{T}, nbufs::Int = 2) where {T}
     end
 
     # Finally, set camera state.
+    _debug(cam, "OK acquisition started")
     cam.state = 2
     return nothing
 end
-
-"""
-
-`starthook(cam)` is called to perform specific actions for starting
-acquisition.  This function should return nothing but may throw exceptions to
-signal errors.
-
-See also: [`start`](@ref), [`stophook`](@ref).
-
-"""
-starthook(::Camera) = nothing
 
 """
     stop(cam)
 
 stops acquisition by camera `cam` after current image.
 
-See also: [`abort`](@ref), [`start`](@ref), [`stophook`](@ref).
+See also: [`abort`](@ref), [`start`](@ref), [`_stophook`](@ref).
 
 """
 stop(cam::Camera) = _stop(cam, PHX_STOP)
@@ -545,7 +548,7 @@ function _stop(cam::Camera, cmd::Acq)
         end
         # Call specific stop command.
         try
-            stophook(cam)
+            _stophook(cam)
         catch err
             rethrow(err)
         finally
@@ -559,11 +562,22 @@ end
 
 """
 
-`stophook(cam)` is called to perform specific actions for stopping
+`_starthook(cam)` is called to perform specific actions for starting
 acquisition.  This function should return nothing but may throw exceptions to
 signal errors.
 
-See also: [`stop`](@ref), [`starthook`](@ref).
+See also: [`start`](@ref), [`_stophook`](@ref).
 
 """
-stophook(::Camera) = nothing
+_starthook(::Camera) = nothing
+
+"""
+
+`_stophook(cam)` is called to perform specific actions for stopping
+acquisition.  This function should return nothing but may throw exceptions to
+signal errors.
+
+See also: [`stop`](@ref), [`_starthook`](@ref).
+
+"""
+_stophook(::Camera) = nothing

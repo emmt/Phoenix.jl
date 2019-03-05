@@ -179,7 +179,7 @@ const FILTER_MODE_COLOR               = UInt32(2)
 struct MikrotronMC408xModel <: CameraModel; end
 
 # Initialize the camera after board is open.
-function openhook(cam::Camera{MikrotronMC408xModel})
+function _openhook(cam::Camera{MikrotronMC408xModel})
 
     # Sanity checks.
     assert_coaxpress(cam)
@@ -265,7 +265,7 @@ function openhook(cam::Camera{MikrotronMC408xModel})
         cam[PHX_DST_ENDIAN] = PHX_DST_BIG_ENDIAN
     end
 
-    return nothing
+    return nothing # FIXME: return PXH_OK?
 end
 
 """
@@ -357,11 +357,11 @@ function setsourceregion!(cam::Camera{MikrotronMC408xModel},
     nothing
 end
 
-starthook(cam::Camera{MikrotronMC408xModel}) =
-    send(cam, ACQUISITION_START)
+_starthook(cam::Camera{MikrotronMC408xModel}) =
+    exec(cam, ACQUISITION_START)
 
-stophook(cam::Camera{MikrotronMC408xModel}) =
-    send(cam, ACQUISITION_STOP)
+_stophook(cam::Camera{MikrotronMC408xModel}) =
+    exec(cam, ACQUISITION_STOP)
 
 
 # Extend method.

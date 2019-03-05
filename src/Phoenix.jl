@@ -15,8 +15,7 @@
 module Phoenix
 
 export
-    PHXError,
-    send
+    PHXError
 
 # Import `ScientificCameras` methods in such a way (i.e. with `importall`) that
 # they can be extended in this module and re-export them to make things easier
@@ -41,7 +40,6 @@ ScientificCameras.@exportpublicinterface
 
 # Import methods for overloading them.
 import Base: |, &, ~, xor, convert
-import Sockets: send
 
 isfile(joinpath(@__DIR__, "..", "deps", "deps.jl")) ||
     error("Phoenix package not properly installed.  Please run Pkg.build(\"Phoenix\")")
@@ -131,10 +129,7 @@ import
     ..isforever,
     ..geterrormessage,
     ..geterrorsymbol,
-    ..printerror,
-    ..openhook,
-    ..starthook,
-    ..stophook
+    ..printerror
 
 export
     AccessMode,
@@ -212,10 +207,7 @@ export
     isforever,
     geterrormessage,
     geterrorsymbol,
-    printerror,
-    openhook,
-    starthook,
-    stophook
+    printerror
 
 end # module Phoenix.Development
 

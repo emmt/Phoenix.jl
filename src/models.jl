@@ -10,14 +10,14 @@
 # This file is part of the `Phoenix.jl` package which is licensed under the MIT
 # "Expat" License.
 #
+# Copyright (C) 2017-2019, Éric Thiébaut (https://github.com/emmt/Phoenix.jl).
 # Copyright (C) 2016, Éric Thiébaut & Jonathan Léger.
-# Copyright (C) 2017, Éric Thiébaut.
 #
 
 # Generic camera model.
-struct GenericCameraModel <: CameraModel; end
+struct GenericCameraModel <: CameraModel end
 
-function openhook(cam::Camera{GenericCameraModel})
+function _openhook(cam::Camera{GenericCameraModel})
     if false
         # Set default configuration (as in `default.pcf`).
         cam[PHX_BOARD_VARIANT]      = PHX_DIGITAL
@@ -44,139 +44,139 @@ function openhook(cam::Camera{GenericCameraModel})
 end
 
 
-struct ActiveSiliconTestModel <: CameraModel; end
+struct ActiveSiliconTestModel <: CameraModel end
 
-starthook(cam::Camera{ActiveSiliconTestModel}) =
-    send(cam, RegisterCommand{UInt32}(0x6000, 0))
+_starthook(cam::Camera{ActiveSiliconTestModel}) =
+    exec(cam, RegisterCommand{UInt32}(0x6000, 0))
 
-stophook(cam::Camera{ActiveSiliconTestModel}) =
-    send(cam, RegisterCommand{UInt32}(0x6000, 1))
-
-
-struct AdimecOpal2000cModel <: CameraModel; end
-
-starthook(cam::Camera{AdimecOpal2000cModel}) =
-    send(cam, RegisterCommand{UInt32}(0x8204, 1))
-
-stophook(cam::Camera{AdimecOpal2000cModel}) =
-    send(cam, RegisterCommand{UInt32}(0x8208, 1))
+_stophook(cam::Camera{ActiveSiliconTestModel}) =
+    exec(cam, RegisterCommand{UInt32}(0x6000, 1))
 
 
-struct AdimecOpal2000mModel <: CameraModel; end
+struct AdimecOpal2000cModel <: CameraModel end
 
-starthook(cam::Camera{AdimecOpal2000mModel}) =
-    send(cam, RegisterCommand{UInt32}(0x8204, 1))
+_starthook(cam::Camera{AdimecOpal2000cModel}) =
+    exec(cam, RegisterCommand{UInt32}(0x8204, 1))
 
-stophook(cam::Camera{AdimecOpal2000mModel}) =
-    send(cam, RegisterCommand{UInt32}(0x8208, 1))
-
-
-struct AdimecQuartz4A180Model <: CameraModel; end
-
-starthook(cam::Camera{AdimecQuartz4A180Model}) =
-    send(cam, RegisterCommand{UInt32}(0x8204, 1))
-
-stophook(cam::Camera{AdimecQuartz4A180Model}) =
-    send(cam, RegisterCommand{UInt32}(0x8208, 1))
+_stophook(cam::Camera{AdimecOpal2000cModel}) =
+    exec(cam, RegisterCommand{UInt32}(0x8208, 1))
 
 
-struct E2vEliixa16kColorModel <: CameraModel; end
+struct AdimecOpal2000mModel <: CameraModel end
 
-starthook(cam::Camera{E2vEliixa16kColorModel}) =
-    send(cam, RegisterCommand{UInt32}(0x700C, 0))
+_starthook(cam::Camera{AdimecOpal2000mModel}) =
+    exec(cam, RegisterCommand{UInt32}(0x8204, 1))
 
-stophook(cam::Camera{E2vEliixa16kColorModel}) =
-    send(cam, RegisterCommand{UInt32}(0x7010, 0))
-
-
-struct E2vEliixa16kMonoModel <: CameraModel; end
-
-starthook(cam::Camera{E2vEliixa16kMonoModel}) =
-    send(cam, RegisterCommand{UInt32}(0x700C, 0))
-
-stophook(cam::Camera{E2vEliixa16kMonoModel}) =
-    send(cam, RegisterCommand{UInt32}(0x7010, 0))
+_stophook(cam::Camera{AdimecOpal2000mModel}) =
+    exec(cam, RegisterCommand{UInt32}(0x8208, 1))
 
 
-struct ImperxModel <: CameraModel; end
+struct AdimecQuartz4A180Model <: CameraModel end
 
-starthook(cam::Camera{ImperxModel}) =
-    send(cam, RegisterCommand{UInt32}(0x10000020, 1))
+_starthook(cam::Camera{AdimecQuartz4A180Model}) =
+    exec(cam, RegisterCommand{UInt32}(0x8204, 1))
 
-stophook(cam::Camera{ImperxModel}) =
-    send(cam, RegisterCommand{UInt32}(0x10000024, 1))
-
-
-struct IoIndustries4M140Model <: CameraModel; end
-
-starthook(cam::Camera{IoIndustries4M140Model}) =
-    send(cam, RegisterCommand{UInt32}(0x10000020, 1))
-
-stophook(cam::Camera{IoIndustries4M140Model}) =
-    send(cam, RegisterCommand{UInt32}(0x10000024, 1))
+_stophook(cam::Camera{AdimecQuartz4A180Model}) =
+    exec(cam, RegisterCommand{UInt32}(0x8208, 1))
 
 
-struct ISVI_C25M_CXP_Model <: CameraModel; end
+struct E2vEliixa16kColorModel <: CameraModel end
 
-starthook(cam::Camera{ISVI_C25M_CXP_Model}) =
-    send(cam, RegisterCommand{UInt32}(0x6050, 1))
+_starthook(cam::Camera{E2vEliixa16kColorModel}) =
+    exec(cam, RegisterCommand{UInt32}(0x700C, 0))
 
-stophook(cam::Camera{ISVI_C25M_CXP_Model}) =
-    send(cam, RegisterCommand{UInt32}(0x6050, 0))
-
-
-struct ISVI_M12M_CXP_Model <: CameraModel; end
-
-starthook(cam::Camera{ISVI_M12M_CXP_Model}) =
-    send(cam, RegisterCommand{UInt32}(0x6050, 1))
-
-stophook(cam::Camera{ISVI_M12M_CXP_Model}) =
-    send(cam, RegisterCommand{UInt32}(0x6050, 0))
+_stophook(cam::Camera{E2vEliixa16kColorModel}) =
+    exec(cam, RegisterCommand{UInt32}(0x7010, 0))
 
 
-struct ISVI_M25M_CXP_Model <: CameraModel; end
+struct E2vEliixa16kMonoModel <: CameraModel end
 
-starthook(cam::Camera{ISVI_M25M_CXP_Model}) =
-    send(cam, RegisterCommand{UInt32}(0x6050, 1))
+_starthook(cam::Camera{E2vEliixa16kMonoModel}) =
+    exec(cam, RegisterCommand{UInt32}(0x700C, 0))
 
-stophook(cam::Camera{ISVI_M25M_CXP_Model}) =
-    send(cam, RegisterCommand{UInt32}(0x6050, 0))
-
-
-struct JAI_SP_5000M_Model <: CameraModel; end
-
-starthook(cam::Camera{JAI_SP_5000M_Model}) =
-    send(cam, RegisterCommand{UInt32}(0x200B0, 1))
-
-stophook(cam::Camera{JAI_SP_5000M_Model}) =
-    send(cam, RegisterCommand{UInt32}(0x200B4, 1))
+_stophook(cam::Camera{E2vEliixa16kMonoModel}) =
+    exec(cam, RegisterCommand{UInt32}(0x7010, 0))
 
 
-# struct MikrotronMC408xModel <: CameraModel; end
+struct ImperxModel <: CameraModel end
+
+_starthook(cam::Camera{ImperxModel}) =
+    exec(cam, RegisterCommand{UInt32}(0x10000020, 1))
+
+_stophook(cam::Camera{ImperxModel}) =
+    exec(cam, RegisterCommand{UInt32}(0x10000024, 1))
+
+
+struct IoIndustries4M140Model <: CameraModel end
+
+_starthook(cam::Camera{IoIndustries4M140Model}) =
+    exec(cam, RegisterCommand{UInt32}(0x10000020, 1))
+
+_stophook(cam::Camera{IoIndustries4M140Model}) =
+    exec(cam, RegisterCommand{UInt32}(0x10000024, 1))
+
+
+struct ISVI_C25M_CXP_Model <: CameraModel end
+
+_starthook(cam::Camera{ISVI_C25M_CXP_Model}) =
+    exec(cam, RegisterCommand{UInt32}(0x6050, 1))
+
+_stophook(cam::Camera{ISVI_C25M_CXP_Model}) =
+    exec(cam, RegisterCommand{UInt32}(0x6050, 0))
+
+
+struct ISVI_M12M_CXP_Model <: CameraModel end
+
+_starthook(cam::Camera{ISVI_M12M_CXP_Model}) =
+    exec(cam, RegisterCommand{UInt32}(0x6050, 1))
+
+_stophook(cam::Camera{ISVI_M12M_CXP_Model}) =
+    exec(cam, RegisterCommand{UInt32}(0x6050, 0))
+
+
+struct ISVI_M25M_CXP_Model <: CameraModel end
+
+_starthook(cam::Camera{ISVI_M25M_CXP_Model}) =
+    exec(cam, RegisterCommand{UInt32}(0x6050, 1))
+
+_stophook(cam::Camera{ISVI_M25M_CXP_Model}) =
+    exec(cam, RegisterCommand{UInt32}(0x6050, 0))
+
+
+struct JAI_SP_5000M_Model <: CameraModel end
+
+_starthook(cam::Camera{JAI_SP_5000M_Model}) =
+    exec(cam, RegisterCommand{UInt32}(0x200B0, 1))
+
+_stophook(cam::Camera{JAI_SP_5000M_Model}) =
+    exec(cam, RegisterCommand{UInt32}(0x200B4, 1))
+
+
+# struct MikrotronMC408xModel <: CameraModel end
 #
-# starthook(cam::Camera{MikrotronMC408xModel}) =
-#     send(cam, RegisterCommand{UInt32}(0x8204, 1))
+# _starthook(cam::Camera{MikrotronMC408xModel}) =
+#     exec(cam, RegisterCommand{UInt32}(0x8204, 1))
 #
-# stophook(cam::Camera{MikrotronMC408xModel}) =
-#     send(cam, RegisterCommand{UInt32}(0x8208, 1))
+# _stophook(cam::Camera{MikrotronMC408xModel}) =
+#     exec(cam, RegisterCommand{UInt32}(0x8208, 1))
 include("MikrotronMC408x.jl")
 import .MikrotronMC408x: MikrotronMC408xModel
 using .MikrotronMC408x
 MikrotronMC408x.@exportmethods
 
-struct OptronisCL4000Model <: CameraModel; end
+struct OptronisCL4000Model <: CameraModel end
 
-starthook(cam::Camera{OptronisCL4000Model}) =
-    send(cam, RegisterCommand{UInt32}(0x601C, 1))
+_starthook(cam::Camera{OptronisCL4000Model}) =
+    exec(cam, RegisterCommand{UInt32}(0x601C, 1))
 
-stophook(cam::Camera{OptronisCL4000Model}) =
-    send(cam, RegisterCommand{UInt32}(0x601C, 0))
+_stophook(cam::Camera{OptronisCL4000Model}) =
+    exec(cam, RegisterCommand{UInt32}(0x601C, 0))
 
 
-struct OptronisCL25000Model <: CameraModel; end
+struct OptronisCL25000Model <: CameraModel end
 
-starthook(cam::Camera{OptronisCL25000Model}) =
-    send(cam, RegisterCommand{UInt32}(0x601C, 1))
+_starthook(cam::Camera{OptronisCL25000Model}) =
+    exec(cam, RegisterCommand{UInt32}(0x601C, 1))
 
-stophook(cam::Camera{OptronisCL25000Model}) =
-    send(cam, RegisterCommand{UInt32}(0x601C, 0))
+_stophook(cam::Camera{OptronisCL25000Model}) =
+    exec(cam, RegisterCommand{UInt32}(0x601C, 0))
