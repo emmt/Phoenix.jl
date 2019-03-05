@@ -45,6 +45,7 @@ import Sockets: send
 
 isfile(joinpath(@__DIR__, "..", "deps", "deps.jl")) ||
     error("Phoenix package not properly installed.  Please run Pkg.build(\"Phoenix\")")
+include(joinpath("..", "deps", "deps.jl"))
 include("CoaXPress.jl")
 include("types.jl")
 include("base.jl")
