@@ -8,8 +8,8 @@
 # This file is part of the `Phoenix.jl` package which is licensed under the MIT
 # "Expat" License.
 #
+# Copyright (C) 2017-2019, Éric Thiébaut (https://github.com/emmt/Phoenix.jl).
 # Copyright (C) 2016, Éric Thiébaut & Jonathan Léger.
-# Copyright (C) 2017, Éric Thiébaut.
 #
 
 export
@@ -55,9 +55,11 @@ export
 # TYPES
 
 """
+
 Abstract type `Register` is used to store (among others) the address (as an
 `UInt32` value) of a CoaXPress register.  All concrete sub-types must have a
 first member `addr::UInt32`.
+
 """
 abstract type Register end
 
@@ -146,7 +148,7 @@ const CXP_ACQUISITION_STOP_ADDRESS    = RegisterAddress{UInt32,WriteOnly}(0x0000
 const CXP_PIXEL_FORMAT_ADDRESS        = RegisterAddress{UInt32,ReadWrite}(0x00003014)
 const CXP_DEVICE_TAP_GEOMETRY_ADDRESS = RegisterAddress{UInt32,ReadWrite}(0x00003018)
 const CXP_IMAGE1_STREAM_ID_ADDRESS    = RegisterAddress{UInt32,ReadWrite}(0x0000301C)
-const CXP_CONNECTION_RESET            = RegisterValue{UInt32,ReadWrite}(0x00004000) # FIXME:
+const CXP_CONNECTION_RESET            = RegisterValue{UInt32,ReadWrite}(0x00004000) # read doc.
 const CXP_DEVICE_CONNECTION_ID        = RegisterValue{UInt32,ReadOnly}(0x00004004)
 const CXP_MASTER_HOST_CONNECTION_ID   = RegisterValue{UInt32,ReadWrite}(0x00004008)
 const CXP_CONTROL_PACKET_SIZE_MAX     = RegisterValue{UInt32,ReadOnly}(0x0000400C)
@@ -156,8 +158,8 @@ const CXP_CONNECTION_CONFIG_DEFAULT   = RegisterValue{UInt32,ReadOnly}(0x0000401
 const CXP_TEST_MODE                   = RegisterValue{UInt32,ReadWrite}(0x0000401C)
 const CXP_TEST_ERROR_COUNT_SELECTOR   = RegisterValue{UInt32,ReadWrite}(0x00004020)
 const CXP_TEST_ERROR_COUNT            = RegisterValue{UInt32,ReadWrite}(0x00004024)
-const CXP_TEST_PACKET_COUNT_TX        = RegisterValue{UInt64,ReadWrite}(0x00004028) # FIXME:
-const CXP_TEST_PACKET_COUNT_RX        = RegisterValue{UInt64,ReadWrite}(0x00004030) # FIXME:
+const CXP_TEST_PACKET_COUNT_TX        = RegisterValue{UInt64,ReadWrite}(0x00004028) # read doc.
+const CXP_TEST_PACKET_COUNT_RX        = RegisterValue{UInt64,ReadWrite}(0x00004030) # read doc.
 const CXP_HS_UP_CONNECTION            = RegisterValue{UInt32,ReadOnly}(0x0000403C)
 const CXP_MANUFACTURER                = RegisterValue{Nothing,Unreachable}(0x00006000)
 
