@@ -112,21 +112,23 @@ function getparam(cam::Camera,
 end
 
 function getparam(cam::Camera,
-                  key::RegisterString{N,A}) where {N,A<:Readable}
+                  key::RegisterString{N,A}) :: String where {N,A<:Readable}
     buf = Array{UInt8}(undef, N)
     checkstatus(_readregister(cam, key, buf, N))
     return unsafe_string(pointer(buf))
 end
 
 function getparam(cam::Camera,
-                  key::RegisterValue{T,A}) where {T<:Real,A<:Readable}
+                  key::RegisterValue{T,A}) :: T where {T<:Real,A<:Readable}
     buf = Ref{T}()
     checkstatus(_getparam(cam, key, buf))
     return buf[]
 end
 
-getparam(cam::Camera, key::RegisterAddress{T,A}) where {T,A<:Readable} =
-    getparam(cam, resolve(cam, key))
+function getparam(cam::Camera,
+                  key::RegisterAddress{T,A}) :: T where {T,A<:Readable}
+    return getparam(cam, resolve(cam, key))
+end
 
 getparam(cam::Camera, key::Param) =
     error("unreadable parameter or undetermined parameter type")
@@ -137,8 +139,8 @@ getparam(cam::Camera, key::Register) =
 function _getparam(cam::Camera,
                    key::Param{T,A},
                    buf::Union{Ptr,Ref}) where {T,A<:Readable}
-    ccall(_PHX_ParameterGet[], Status, (Handle, Cuint, Ptr{Cvoid}),
-          cam.handle, key.ident, buf)
+    return ccall(_PHX_ParameterGet[], Status, (Handle, Cuint, Ptr{Cvoid}),
+                 cam.handle, key.ident, buf)
 end
 
 function _getparam(cam::Camera,
@@ -163,7 +165,9 @@ yields the CoaXPress register at indirect register address `regaddr` for camera
 See also: [`getparam`](@ref), [`setparam!`](@ref).
 
 """
-function resolve(cam::Camera, reg::RegisterAddress{T,A}) where {T,A<:AccessMode}
+function resolve(cam::Camera,
+                 reg::RegisterAddress{T,A}
+                 ) :: RegisterValue{T,A} where {T,A<:AccessMode}
     buf = Ref{UInt32}()
     checkstatus(_readregister(cam, reg, buf, 4))
     addr = (cam.swap ? bswap(buf[]) : buf[])
@@ -195,30 +199,35 @@ function setparam!(cam::Camera,
                    key::Param{T,A},
                    val::Integer) where {T<:Integer,A<:Writable}
     checkstatus(_setparam!(cam, key, Ref{T}(val)))
+    return val
 end
 
 function setparam!(cam::Camera,
                    key::Param{String,A},
                    str::AbstractString) where {A<:Writable}
     checkstatus(_setparam!(cam, key, Ref(pointer(cstring(str)))))
+    return str
 end
 
 function setparam!(cam::Camera,
                    key::Param{Nothing,A},
                    ::Nothing) where {A<:Writable}
     checkstatus(_setparam!(cam, key, C_NULL))
+    return nothing
 end
 
 function setparam!(cam::Camera,
                    key::Param{Ptr{T},A},
                    buf::Union{Vector{T},Ptr{T},Ref{T}}) where {T,A<:Writable}
     checkstatus(_setparam!(cam, key, buf))
+    return buf
 end
 
 function setparam!(cam::Camera,
                    key::Param{Ptr{Cvoid},A},
                    buf::Union{Vector,Ptr,Ref}) where {A<:Writable}
     checkstatus(_setparam!(cam, key, buf))
+    return buf
 end
 
 function setparam!(cam::Camera,
@@ -239,24 +248,27 @@ function setparam!(cam::Camera,
         buf[i] = zero(UInt8)
     end
     checkstatus(_writeregister(cam, key, buf, N))
+    return str
 end
 
 function setparam!(cam::Camera,
                    key::RegisterValue{T,A},
                    val::Real) where {T<:Real,A<:Writable}
     setparam!(cam, key, convert(T, val))
+    return val
 end
 
 function setparam!(cam::Camera,
                    key::RegisterValue{T,A},
                    val::T) where {T<:Real,A<:Writable}
     checkstatus(_setparam!(cam, key, Ref{T}(val)))
+    return val
 end
 
 function setparam!(cam::Camera,
                    key::RegisterAddress{T,A},
                    val) where {T,A<:Writable}
-    setparam!(cam, resolve(cam, key), val)
+    return setparam!(cam, resolve(cam, key), val)
 end
 
 setparam!(cam::Camera, key::Param, val) =
@@ -268,8 +280,8 @@ setparam!(cam::Camera, key::Register, val) =
 function _setparam!(cam::Camera,
                     key::Param{T,A},
                     buf::Union{Ptr,Ref,Vector}) where {T,A<:Writable}
-    ccall(_PHX_ParameterSet[], Status, (Handle, Cuint, Ptr{Cvoid}),
-          cam.handle, key.ident, buf)
+    return ccall(_PHX_ParameterSet[], Status, (Handle, Cuint, Ptr{Cvoid}),
+                 cam.handle, key.ident, buf)
 end
 
 function _setparam!(cam::Camera,
@@ -278,7 +290,7 @@ function _setparam!(cam::Camera,
     if cam.swap
         buf[] = bswap(buf[])
     end
-    _writeregister(cam, key, buf, sizeof(T))
+    return _writeregister(cam, key, buf, sizeof(T))
 end
 
 @doc @doc(setparam!) _setparam!
@@ -292,7 +304,7 @@ hardware.
 """
 function flushcache(cam::Camera)
     cam[Param{Ptr{Cvoid},WriteOnly}(PHX_DUMMY_PARAM|PHX_CACHE_FLUSH)] = C_NULL
-    nothing
+    return nothing
 end
 
 """
@@ -499,11 +511,11 @@ function Base.close(cam::Camera)
     elseif cam.state == 1
         # Note that PHX_Close requires the address of the handle but left its
         # contents unchanged.
+        cam.state = 0 # avoid closing more than once
         ref = Ref(cam.handle)
         status = ccall(_PHX_Close[], Status, (Ptr{Handle},), ref)
         #cam.handle = ref[] # not needed (cf. note above)?
         status == PHX_OK || throw(PHXError(status))
-        cam.state = 0
     elseif cam.state == 2
         error("cannot close camera while acquisition is running")
     else
@@ -512,6 +524,7 @@ function Base.close(cam::Camera)
     return nothing
 end
 
+Base.isopen(cam::Camera) = (1 ≤ cam.state ≤ 2)
 
 """
     _readstream(cam, cmd, ptr) -> status
@@ -528,7 +541,7 @@ _readstream(cam::Camera, cmd::Acq, ptr::Union{Ref,Ptr}) =
           cam.handle, cmd, ptr)
 
 """
-    _readregister(cam, reg, data, num, timeout = cam.timeout)
+    _readregister(cam, reg, data, num, timeout = cam.timeout) -> status
 
 reads register `reg` from camera `cam`.
 
@@ -537,8 +550,8 @@ See also: [`_readcontrol`](@ref), [`_writeregister`](@ref).
 """
 function _readregister(cam::Camera, reg::Register, data, num::Integer,
                        timeout::Integer = cam.timeout)
-    _readcontrol(cam.handle, PHX_REGISTER_DEVICE,
-                 Ref(reg.addr), data, Ref{UInt32}(num), timeout)
+    return _readcontrol(cam.handle, PHX_REGISTER_DEVICE,
+                        Ref(reg.addr), data, Ref{UInt32}(num), timeout)
 end
 
 """
@@ -560,13 +573,13 @@ See also: [`_readregister`](@ref), [`_writecontrol`](@ref).
 """
 function _readcontrol(handle::Handle, src::ControlPort, param, buf,
                       num::Ref{UInt32}, timeout::Integer)
-    ccall(_PHX_ControlRead[], Status,
-          (Handle, UInt32, Ptr{Cvoid}, Ptr{Cvoid}, Ptr{UInt32}, UInt32),
-          handle, src.port, param, buf, num, timeout)
+    return ccall(_PHX_ControlRead[], Status,
+                 (Handle, UInt32, Ptr{Cvoid}, Ptr{Cvoid}, Ptr{UInt32}, UInt32),
+                 handle, src.port, param, buf, num, timeout)
 end
 
 """
-    _writeregister(cam, reg, data, num, timeout = cam.timeout)
+    _writeregister(cam, reg, data, num, timeout = cam.timeout) -> status
 
 writes register `reg` to camera `cam`.
 
@@ -575,8 +588,8 @@ See also: [`_writecontrol`](@ref), [`_readregister`](@ref).
 """
 function _writeregister(cam::Camera, reg::Register, data, num::Integer,
                         timeout::Integer = cam.timeout)
-    _writecontrol(cam.handle, PHX_REGISTER_DEVICE,
-                  Ref(reg.addr), data, Ref{UInt32}(num), timeout)
+   return _writecontrol(cam.handle, PHX_REGISTER_DEVICE,
+                        Ref(reg.addr), data, Ref{UInt32}(num), timeout)
 end
 
 """
@@ -598,7 +611,7 @@ See also: [`_writeregister`](@ref), [`_readcontrol`](@ref).
 """
 function _writecontrol(handle::Handle, src::ControlPort, param, buf,
                        num::Ref{UInt32}, timeout::Integer)
-    ccall(_PHX_ControlWrite[], Status,
-          (Handle, UInt32, Ptr{Cvoid}, Ptr{Cvoid}, Ptr{UInt32}, UInt32),
-          handle, src.port, param, buf, num, timeout)
+    return ccall(_PHX_ControlWrite[], Status,
+                 (Handle, UInt32, Ptr{Cvoid}, Ptr{Cvoid}, Ptr{UInt32}, UInt32),
+                 handle, src.port, param, buf, num, timeout)
 end
