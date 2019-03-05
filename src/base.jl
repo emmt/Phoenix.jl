@@ -498,14 +498,18 @@ openhook(cam::Camera) = nothing
 """
     close(cam)
 
-closes an Active Silicon board, releasing the hardware.  The camera is
-automatically closed when finalized by the garbage collector, so calling this
-method is optional.
+closes an Active Silicon board, releasing the hardware.  Any running
+acquisition is aborted.  The camera is automatically closed when finalized by
+the garbage collector, so calling this method is optional.
 
-See also: [`open`](@ref).
+See also: [`open`](@ref), [`abort`](@ref).
 
 """
 function Base.close(cam::Camera)
+    if cam.state == 2
+        # Acquisition is running, abort it.
+        abort(cam)
+    end
     if cam.state == 0
         @warn "camera has already been closed"
     elseif cam.state == 1
@@ -516,8 +520,6 @@ function Base.close(cam::Camera)
         status = ccall(_PHX_Close[], Status, (Ptr{Handle},), ref)
         #cam.handle = ref[] # not needed (cf. note above)?
         status == PHX_OK || throw(PHXError(status))
-    elseif cam.state == 2
-        error("cannot close camera while acquisition is running")
     else
         error("camera structure corrupted")
     end
