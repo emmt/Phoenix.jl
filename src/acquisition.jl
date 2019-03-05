@@ -510,7 +510,19 @@ stops acquisition by camera `cam` after current image.
 See also: [`abort`](@ref), [`start`](@ref), [`stophook`](@ref).
 
 """
-function stop(cam::Camera, cmd::Acq = PHX_STOP)
+stop(cam::Camera) = _stop(cam, PHX_STOP)
+
+"""
+    abort(cam)
+
+aborts acquisition by camera `cam` without waiting for current image.
+
+See also: [`stop`](@ref), [`start`](@ref).
+
+"""
+abort(cam::Camera) = _stop(cam, PHX_ABORT)
+
+function _stop(cam::Camera, cmd::Acq)
     if cam.state == 0
         error("camera must be open")
     elseif cam.state == 1
@@ -544,16 +556,6 @@ function stop(cam::Camera, cmd::Acq = PHX_STOP)
     end
     return nothing
 end
-
-"""
-    abort(cam)
-
-aborts acquisition by camera `cam` without waiting for current image.
-
-See also: [`stop`](@ref), [`start`](@ref).
-
-"""
-abort(cam::Camera) = stop(cam, PHX_ABORT)
 
 """
 
