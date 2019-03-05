@@ -10,7 +10,7 @@
 # This file is part of the `Phoenix.jl` package which is licensed under the MIT
 # "Expat" License.
 #
-# Copyright (C) 2017, Éric Thiébaut.
+# Copyright (C) 2017-2019, Éric Thiébaut (https://github.com/emmt/Phoenix.jl).
 #
 
 if test $# != 1; then
@@ -29,7 +29,7 @@ fi
 # Generate header.
 cat >"$DEST" <<'EOF'
 #
-# constants.jl --
+# deps.jl --
 #
 # Definitions of types and constants for interfacing ActiveSilicon Phoenix
 # (PHX) library with Julia.
@@ -41,7 +41,7 @@ cat >"$DEST" <<'EOF'
 # This file is part of the `Phoenix.jl` package which is licensed under the MIT
 # "Expat" License.
 #
-# Copyright (C) 2017, Éric Thiébaut.
+# Copyright (C) 2017-2019, Éric Thiébaut (https://github.com/emmt/Phoenix.jl).
 #
 
 # Abstract (i.e., non-instanciable) types used to indicate whether

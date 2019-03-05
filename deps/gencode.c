@@ -6,9 +6,11 @@
  *
  *------------------------------------------------------------------------------
  *
- * Copyright (C) 2017-2019, Éric Thiébaut.
+ * This file is part of the `Phoenix.jl` package which is licensed under the
+ * MIT "Expat" License.
+ *
+ * Copyright (C) 2017-2019, Éric Thiébaut (https://github.com/emmt/Phoenix.jl).
  * Copyright (C) 2016, Éric Thiébaut & Jonathan Léger.
- * All rights reserved.
  */
 
 #include <stdio.h>

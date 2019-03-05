@@ -9,7 +9,7 @@
 # This file is part of the `Phoenix.jl` package which is licensed under the MIT
 # "Expat" License.
 #
-# Copyright (C) 2017, Éric Thiébaut.
+# Copyright (C) 2017-2019, Éric Thiébaut (https://github.com/emmt/Phoenix.jl).
 #
 
 srcdir = .
@@ -33,9 +33,9 @@ default: all
 clean:
 	rm -f *~ *.o gencode
 
-all: $(srcdir)/../src/constants.jl
+all: deps.jl
 
-$(srcdir)/../src/constants.jl: gencode gencode.sh
+deps.jl: gencode gencode.sh
 	rm -f "$@"
 	./gencode.sh "$@"
 	chmod a-w "$@"

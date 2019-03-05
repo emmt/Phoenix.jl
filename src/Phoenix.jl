@@ -8,8 +8,8 @@
 # This file is part of the `Phoenix.jl` package which is licensed under the MIT
 # "Expat" License.
 #
+# Copyright (C) 2017-2019, Éric Thiébaut (https://github.com/emmt/Phoenix.jl).
 # Copyright (C) 2016, Éric Thiébaut & Jonathan Léger.
-# Copyright (C) 2017, Éric Thiébaut.
 #
 
 module Phoenix
@@ -43,7 +43,8 @@ ScientificCameras.@exportpublicinterface
 import Base: |, &, ~, xor, convert
 import Sockets: send
 
-include("constants.jl")
+isfile(joinpath(@__DIR__, "..", "deps", "deps.jl")) ||
+    error("Phoenix package not properly installed.  Please run Pkg.build(\"Phoenix\")")
 include("CoaXPress.jl")
 include("types.jl")
 include("base.jl")
