@@ -9,8 +9,8 @@
 # This file is part of the `Phoenix.jl` package which is licensed under the MIT
 # "Expat" License.
 #
+# Copyright (C) 2017-2019, Éric Thiébaut (https://github.com/emmt/Phoenix.jl).
 # Copyright (C) 2016, Éric Thiébaut & Jonathan Léger.
-# Copyright (C) 2017, Éric Thiébaut.
 #
 
 Base.showerror(io::IO, e::PHXError) =
@@ -30,6 +30,16 @@ function geterrormessage(code::Integer)
     ccall(_PHX_ErrCodeDecode[], Nothing, (Ptr{UInt8}, Status), buf, code)
     return unsafe_string(pointer(buf))
 end
+
+"""
+   geterrorsymbol(code)
+
+yields the symbol corresponding to status value `code`.
+
+See also: [`geterrormessage`](@ref), [`printerror`](@ref).
+
+"""
+geterrorsymbol(code::Integer) = get(_ERRSYM, code, :PHX_UNKNOWN_STATUS)
 
 const _ERRSYM = Dict{Status, Symbol}()
 for s in (:PHX_OK, :PHX_ERROR_BAD_HANDLE, :PHX_ERROR_BAD_PARAM,
@@ -57,16 +67,6 @@ for s in (:PHX_OK, :PHX_ERROR_BAD_HANDLE, :PHX_ERROR_BAD_PARAM,
 end
 
 """
-   geterrorsymbol(code)
-
-yields the symbol corresponding to status value `code`.
-
-See also: [`geterrormessage`](@ref), [`printerror`](@ref).
-
-"""
-geterrorsymbol(code::Integer) = get(_ERRSYM, code, :PHX_UNKNOWN_STATUS)
-
-"""
 
     printerror() -> curmode
 
@@ -80,27 +80,27 @@ which set the error mode to be `newmode` and yields the previous setting.
 See also: [`geterrormessage`](@ref).
 
 """
-printerror() = _printerror[]
+printerror() = _PRNTERRMODE_REF[]
 printerror(newmode::Bool) =
-    (oldmode = _printerror[]; _printerror[] = newmode; oldmode)
+    (oldmode = _PRNTERRMODE_REF[]; _PRNTERRMODE_REF[] = newmode; oldmode)
 
-# `_printerror` is a global reference (hence non-volatile) to store whether or
-# not print error messages.  In case of error, if `_printerror[]` is true, the
+# `_PRNTERRMODE_REF` is a global reference (hence non-volatile) to store whether or
+# not print error messages.  In case of error, if `_PRNTERRMODE_REF[]` is true, the
 # error handler `_errorhandler` will call Phoenix default error handler (to
 # avoid using any Julia i/o routines); otherwise nothing is printed.  This
 # mecanism is intended to be able to toggle printing of error messages while
 # being thread safe because nothing from Julia is used.
 #
-const _printerror = Ref{Bool}(true)
-const _lasterrfunc = Ref{Ptr{Cchar}}(C_NULL)
-const _lasterrcode = Ref{Status}(PHX_OK)
-const _lasterrmesg = Ref{Ptr{Cchar}}(C_NULL)
+const _PRNTERRMODE_REF = Ref{Bool}(true)
+const _LASTERRFUNC_REF = Ref{Ptr{Cchar}}(C_NULL)
+const _LASTERRCODE_REF = Ref{Status}(PHX_OK)
+const _LASTERRMESG_REF = Ref{Ptr{Cchar}}(C_NULL)
 
 """
     _errorhandler(func, code, mesg)
 
 error handler for the Phoenix library.  Temporarily stores last error and, if
-`_printerror[]` is true, immediately calls `_printlasterror()`; otherwise the
+`_PRNTERRMODE_REF[]` is true, immediately calls `_printlasterror()`; otherwise the
 error message can be printed a bit later (however prior to calling any Phoenix
 functions) by calling `_printlasterror()`.  This method is thread safe (it does
 not use Julia engine) as you can check with:
@@ -109,10 +109,10 @@ not use Julia engine) as you can check with:
 
 """
 function _errorhandler(func::Ptr{Cchar}, code::Status, mesg::Ptr{Cchar})
-    _lasterrfunc[] = func
-    _lasterrcode[] = code
-    _lasterrmesg[] = mesg
-    if _printerror[]
+    _LASTERRFUNC_REF[] = func
+    _LASTERRCODE_REF[] = code
+    _LASTERRMESG_REF[] = mesg
+    if _PRNTERRMODE_REF[]
         _printlasterror()
     end
 end
@@ -120,21 +120,21 @@ end
 """
     _printlasterror()
 
-prints last error (if any and if `_printerror[]` is true) using the default
-error handler of the Phoenix library and clear memorized error.  This method is
-intended to be called right after an error occured.  This method is thread safe
-(it does not use Julia engine) as you can check with:
+prints last error (if and only if `_PRNTERRMODE_REF[]` is true) using the
+default error handler of the Phoenix library and clear memorized error.  This
+method is intended to be called right after an error occured.  This method is
+thread safe (it does not use Julia engine) as you can check with:
 
     code_native(Phoenix._printlasterror, ())
 
 """
 function _printlasterror()
-    if _printerror[] && _lasterrfunc[] != C_NULL && _lasterrmesg[] != C_NULL
-        ccall(_PHX_ErrHandlerDefault[], Nothing, (Ptr{Cchar}, Status, Ptr{Cchar}),
-              _lasterrfunc[], _lasterrcode[], _lasterrmesg[])
+    if _PRNTERRMODE_REF[] && _LASTERRFUNC_REF[] != C_NULL && _LASTERRMESG_REF[] != C_NULL
+        ccall(_PHX_ErrHandlerDefault[], Cvoid, (Ptr{Cchar}, Status, Ptr{Cchar}),
+              _LASTERRFUNC_REF[], _LASTERRCODE_REF[], _LASTERRMESG_REF[])
     end
-    _lasterrfunc[] = C_NULL
-    _lasterrcode[] = PHX_OK
-    _lasterrmesg[] = C_NULL
+    _LASTERRFUNC_REF[] = C_NULL
+    _LASTERRCODE_REF[] = PHX_OK
+    _LASTERRMESG_REF[] = C_NULL
     return nothing
 end

@@ -25,11 +25,9 @@ end
 import ScientificCameras: ScientificCamera, ROI, setspeed!
 
 using Phoenix
-for sym in names(Phoenix.Development)
-    if sym != :Development
-        @eval begin
-            import Phoenix.Development: $sym
-        end
+for sym in Phoenix._DEVEL_SYMBOLS
+    @eval begin
+        import Phoenix: $sym
     end
 end
 
@@ -110,6 +108,18 @@ const PIXEL_FORMAT = RegisterEnum{ReadWrite}(0x8144)
 const IMAGE1_STREAM_ID = RegisterValue{UInt32,ReadOnly}(0x8164)
 # const DEVICE_SCANTYPE = RegisterEnum{ReadOnly}(????) always 0x0, i.e. "Areascan"
 
+# Possible values for CXP_DEVICE_INFORMATION_SELECTOR.
+const DEVICE_INFORMATION_SELECTOR_SERIAL_NUMBER     =  0
+const DEVICE_INFORMATION_SELECTOR_DEVICE_TYPE       =  1
+const DEVICE_INFORMATION_SELECTOR_DEVICE_SUBTYPE    =  2
+const DEVICE_INFORMATION_SELECTOR_HARDWARE_REVISION =  3
+const DEVICE_INFORMATION_SELECTOR_FPGA_VERSION      =  4
+const DEVICE_INFORMATION_SELECTOR_SOFTWARE_VERSION  =  5
+const DEVICE_INFORMATION_SELECTOR_POWER_SOURCE      = 20
+const DEVICE_INFORMATION_SELECTOR_POWER_CONSUMPTION = 21
+const DEVICE_INFORMATION_SELECTOR_POWER_VOLTAGE     = 22
+const DEVICE_INFORMATION_SELECTOR_TEMPERATURE       = 23
+
 const REGION_MODE_OFF = UInt32(0x00)
 const REGION_MODE_ON  = UInt32(0x01)
 
@@ -152,8 +162,8 @@ const PRST_ENABLE                     = RegisterValue{UInt32,ReadWrite}(0x9200)
 const PULSE_DRAIN_ENABLE              = RegisterValue{UInt32,ReadWrite}(0x9204)
 const CUSTOM_SENSOR_CLK_ENABLE        = RegisterValue{Nothing,Unreachable}(0x9300)
 const CUSTOM_SENSOR_CLK               = RegisterValue{Nothing,Unreachable}(0x9304)
-const DEVICE_INFORMATION              = RegisterValue{Nothing,Unreachable}(0x8A04)
-const DEVICE_INFORMATION_SELECTOR     = RegisterValue{Nothing,Unreachable}(0x8A00)
+const DEVICE_INFORMATION              = RegisterValue{UInt32,ReadOnly}(0x8A04)
+const DEVICE_INFORMATION_SELECTOR     = RegisterValue{UInt32,ReadWrite}(0x8A00)
 const ANALOG_REGISTER_SET_SELECTOR    = RegisterValue{Nothing,Unreachable}(0x20000)
 const ANALOG_REGISTER_SELECTOR        = RegisterValue{Nothing,Unreachable}(0x20004)
 const ANALOG_VALUE                    = RegisterValue{Nothing,Unreachable}(0x20008)

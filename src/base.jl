@@ -374,12 +374,12 @@ end
 function _errorhandler end
 function _callback end
 
-const _errorhandler_ptr = Ref{Ptr{Cvoid}}(0)
-const _callback_ptr = Ref{Ptr{Cvoid}}(0)
+const _ERRORHANDLER_REF = Ref{Ptr{Cvoid}}(0)
+const _CALLBACK_REF = Ref{Ptr{Cvoid}}(0)
 function __init__()
-    _errorhandler_ptr[] = @cfunction(_errorhandler, Cvoid,
+    _ERRORHANDLER_REF[] = @cfunction(_errorhandler, Cvoid,
                                      (Ptr{Cchar}, Status, Ptr{Cchar}))
-    _callback_ptr[] = @cfunction(_callback, Cvoid,
+    _CALLBACK_REF[] = @cfunction(_callback, Cvoid,
                                  (Handle, UInt32, Ptr{Cvoid}))
 
     # Manage to load the dynamic library and its symbols with appropriate

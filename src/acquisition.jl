@@ -487,7 +487,7 @@ function start(cam::Camera, ::Type{T}, nbufs::Int = 4) where {T}
 
     # Start acquisition with our own callback.
     _debug(cam, "start acquisition...")
-    readstream(cam, PHX_START, _callback_ptr[])
+    readstream(cam, PHX_START, _CALLBACK_REF[])
 
     # Send specific start command, aborting acquisition in case of errors.
     _debug(cam, "apply start hook...")

@@ -131,6 +131,8 @@ identify the different camera models.
 """
 abstract type CameraModel end
 
+abstract type Configuration{M<:CameraModel} end
+
 mutable struct Camera{M<:CameraModel} <: ScientificCamera
     state::Int # 0 initially, 1 when camera open, 2 while acquiring
     handle::Handle # 0 before calling PHX_Create or after calling PHX_Destroy
@@ -143,7 +145,7 @@ mutable struct Camera{M<:CameraModel} <: ScientificCamera
     coaxpress::Bool # is it a CoaXPress camera?
     debug::Bool # print debug messages?
 
-    function Camera{M}(errorhandler::Ptr{Cvoid} = _errorhandler_ptr[]) where {M}
+    function Camera{M}(errorhandler::Ptr{Cvoid} = _ERRORHANDLER_REF[]) where {M}
         # Create a new PHX handle structure.
         handle = Ref{Handle}(0)
         status = ccall(_PHX_Create[], Status, (Ptr{Handle}, Ptr{Cvoid}),
