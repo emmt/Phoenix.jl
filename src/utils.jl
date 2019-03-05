@@ -27,33 +27,6 @@ function histogram(arr::AbstractArray{T,N}) where {T <: Integer, N}
     return (x, y)
 end
 
-"""
-    fieldoffset(x::DataType, s::Symbol)
-
-yields the byte offset of field `s` in structure `x`.  Beware that this is
-slower than requested the offset by index.
-
-"""
-Base.fieldoffset(::Type{T}, s::Symbol) where {T} =
-    fieldoffset(T, fieldindex(T, s))
-
-"""
-    fieldindex(x::DataType, s::Symbol)
-
-yields the index of field `s` in structure `x`.
-
-See also: [`nfields`](@ref), [`fieldname`](@ref), [`fieldoffset`](@ref).
-
-"""
-function fieldindex(::Type{T}, s::Symbol) where {T}
-    for i in 1:nfields(T)
-        if fieldname(T, i) == s
-            return i
-        end
-    end
-    throw(ArgumentError("type `$T` has no field `$s`"))
-end
-
 const _DST_FORMATS = Dict(PHX_DST_FORMAT_Y8   => Monochrome{8},
                           PHX_DST_FORMAT_Y10  => Monochrome{10},
                           PHX_DST_FORMAT_Y12  => Monochrome{12},

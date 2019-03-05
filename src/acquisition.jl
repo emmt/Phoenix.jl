@@ -16,22 +16,38 @@
 const SUCCESS = Cint(0)
 const FAILURE = Cint(-1)
 
-const _offsetof_context_cond      = fieldoffset(AcquisitionContext, :cond)
-const _offsetof_context_mutex     = fieldoffset(AcquisitionContext, :mutex)
-const _offsetof_context_imgbuf    = fieldoffset(AcquisitionContext, :imgbuf)
-const _offsetof_context_imgctx    = fieldoffset(AcquisitionContext, :imgctx)
-const _offsetof_context_index     = fieldoffset(AcquisitionContext, :index)
-const _offsetof_context_sec       = fieldoffset(AcquisitionContext, :sec)
-const _offsetof_context_usec      = fieldoffset(AcquisitionContext, :usec)
-const _offsetof_context_number    = fieldoffset(AcquisitionContext, :number)
-const _offsetof_context_overflows = fieldoffset(AcquisitionContext, :overflows)
-const _offsetof_context_synclosts = fieldoffset(AcquisitionContext, :synclosts)
-const _offsetof_context_pending   = fieldoffset(AcquisitionContext, :pending)
-const _offsetof_context_events    = fieldoffset(AcquisitionContext, :events)
+"""
+    _offsetof(x::DataType, s::Symbol)
 
-const _offsetof_framedata_sec     = fieldoffset(FrameData, :sec)
-const _offsetof_framedata_usec    = fieldoffset(FrameData, :usec)
-const _offsetof_framedata_index   = fieldoffset(FrameData, :index)
+yields the byte offset of field `s` in structure `x`.  Beware that this is
+slower than requested the offset by index.
+
+"""
+function _offsetof(::Type{T}, s::Symbol) where {T}
+    for i in 1:nfields(T)
+        if fieldname(T, i) == s
+            return fieldoffset(T, i)
+        end
+    end
+    throw(ArgumentError("type `$T` has no field `$s`"))
+end
+
+const _offsetof_context_cond      = _offsetof(AcquisitionContext, :cond)
+const _offsetof_context_mutex     = _offsetof(AcquisitionContext, :mutex)
+const _offsetof_context_imgbuf    = _offsetof(AcquisitionContext, :imgbuf)
+const _offsetof_context_imgctx    = _offsetof(AcquisitionContext, :imgctx)
+const _offsetof_context_index     = _offsetof(AcquisitionContext, :index)
+const _offsetof_context_sec       = _offsetof(AcquisitionContext, :sec)
+const _offsetof_context_usec      = _offsetof(AcquisitionContext, :usec)
+const _offsetof_context_number    = _offsetof(AcquisitionContext, :number)
+const _offsetof_context_overflows = _offsetof(AcquisitionContext, :overflows)
+const _offsetof_context_synclosts = _offsetof(AcquisitionContext, :synclosts)
+const _offsetof_context_pending   = _offsetof(AcquisitionContext, :pending)
+const _offsetof_context_events    = _offsetof(AcquisitionContext, :events)
+
+const _offsetof_framedata_sec     = _offsetof(FrameData, :sec)
+const _offsetof_framedata_usec    = _offsetof(FrameData, :usec)
+const _offsetof_framedata_index   = _offsetof(FrameData, :index)
 
 @assert _offsetof_context_imgctx == _offsetof_context_imgbuf + sizeof(Ptr{Cvoid})
 @assert _offsetof_context_usec == _offsetof_context_sec + sizeof(_typeof_tv_sec)
