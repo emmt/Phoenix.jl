@@ -280,42 +280,40 @@ function Base.summary(cam::Camera)
 
     # CoaXPress camera?
     @printf("CoaXPress camera:         %s\n",
-            (is_coaxpress(cam) ? "true" : "false"))
-    if is_coaxpress(cam)
+            (iscoaxpress(cam) ? "true" : "false"))
 
-    end
-
-   @printf("Camera active xoffset:    %4d\n",
-           Int(cam[PHX_CAM_ACTIVE_XOFFSET]))
-   @printf("Camera active yoffset:    %4d\n",
-           Int(cam[PHX_CAM_ACTIVE_YOFFSET]))
-   @printf("Camera active xlength:    %4d\n",
-           Int(cam[PHX_CAM_ACTIVE_XLENGTH]))
-   @printf("Camera active ylength:    %4d\n",
-           Int(cam[PHX_CAM_ACTIVE_YLENGTH]))
+    @printf("Camera active xoffset:    %4d\n",
+            Int(cam[PHX_CAM_ACTIVE_XOFFSET]))
+    @printf("Camera active yoffset:    %4d\n",
+            Int(cam[PHX_CAM_ACTIVE_YOFFSET]))
+    @printf("Camera active xlength:    %4d\n",
+            Int(cam[PHX_CAM_ACTIVE_XLENGTH]))
+    @printf("Camera active ylength:    %4d\n",
+            Int(cam[PHX_CAM_ACTIVE_YLENGTH]))
 
 end
 
 """
 
-`is_coaxpress(cam)` yields whether Phoenix camara `cam` is a CoaXPress
+`iscoaxpress(cam)` yields whether Phoenix camara `cam` is a CoaXPress
 controlled camera.
 
 See also: [`Phoenix.Camera`](@ref), [`Phoenix.assert_coaxpress`](@ref).
 
 """
-is_coaxpress(cam::Camera) = cam.coaxpress
+iscoaxpress(cam::Camera) = false
+iscoaxpress(cam::CoaXPressCamera) = true
 
 """
 
 `assert_coaxpress(cam)` checks whether Phoenix camara `cam` is a CoaXPress
 controlled camera and throw an error otherwise.
 
-See also: [`Phoenix.is_coaxpress`](@ref).
+See also: [`Phoenix.iscoaxpress`](@ref).
 
 """
 function assert_coaxpress(cam::Camera)
-    if is_coaxpress(cam)
+    if iscoaxpress(cam)
         magic = cam[CXP_STANDARD]
         if magic != CXP_MAGIC
             if magic == bswap(CXP_MAGIC)
@@ -331,22 +329,22 @@ function assert_coaxpress(cam::Camera)
 end
 
 getvendorname(cam::Camera) =
-    is_coaxpress(cam) ? cam[CXP_DEVICE_VENDOR_NAME] : ""
+    iscoaxpress(cam) ? cam[CXP_DEVICE_VENDOR_NAME] : ""
 
 getmodelname(cam::Camera) =
-    is_coaxpress(cam) ? cam[CXP_DEVICE_MODEL_NAME] : ""
+    iscoaxpress(cam) ? cam[CXP_DEVICE_MODEL_NAME] : ""
 
 getdevicemanufacturer(cam::Camera) =
-    is_coaxpress(cam) ? cam[CXP_DEVICE_MANUFACTURER_INFO] : ""
+    iscoaxpress(cam) ? cam[CXP_DEVICE_MANUFACTURER_INFO] : ""
 
 getdeviceversion(cam::Camera) =
-    is_coaxpress(cam) ? cam[CXP_DEVICE_VERSION] : ""
+    iscoaxpress(cam) ? cam[CXP_DEVICE_VERSION] : ""
 
 getdeviceserialnumber(cam::Camera) =
-    is_coaxpress(cam) ? cam[CXP_DEVICE_SERIAL_NUMBER] : ""
+    iscoaxpress(cam) ? cam[CXP_DEVICE_SERIAL_NUMBER] : ""
 
 getdeviceuserid(cam::Camera) =
-    is_coaxpress(cam) ? cam[CXP_DEVICE_USER_ID] : ""
+    iscoaxpress(cam) ? cam[CXP_DEVICE_USER_ID] : ""
 
 subsampling_parameter(sub::Integer) =
     (sub == 1 ? PHX_ACQ_X1 :
@@ -375,8 +373,7 @@ function gettimeofday()
     return tvref[]
 end
 
-
-TimeVal(sec::Real) = TimeVal(convert(Float64, sec))
+TimeVal(sec::Real) = TimeVal(Float64(sec))
 TimeVal(sec::Integer) = TimeVal(sec, 0)
 TimeVal(tv::TimeVal) = tv
 function TimeVal(ts::TimeSpec)
@@ -400,9 +397,6 @@ function TimeVal(sec::Float64)
         throw(DomainError())
     end
 end
-#Base.convert(::Type{TimeVal}, x) = TimeVal(x)
-Base.float(tv::TimeVal) = (convert(Float64, tv.sec) +
-                           convert(Float64, tv.usec)*1E-6)
 
 """
 
@@ -418,7 +412,7 @@ yields a `TimeSpec` instance for `10.3` seconds later.  Use the `float` method
 to convert a `TimeSpec` value in a floating-point value in seconds.
 
 """
-TimeSpec(sec::Real) = TimeSpec(convert(Float64, sec))
+TimeSpec(sec::Real) = TimeSpec(Float64(sec))
 TimeSpec(sec::Integer) = TimeSpec(sec, 0)
 TimeSpec(tv::TimeVal) = TimeSpec(tv.sec, tv.usec*1_000)
 TimeSpec(ts::TimeSpec) = ts
@@ -438,11 +432,18 @@ function TimeSpec(sec::Float64)
         throw(DomainError())
     end
 end
-#Base.convert(::Type{TimeSpec}, x) = TimeSpec(x)
-Base.float(ts::TimeSpec) = (convert(Float64, ts.sec) +
-                            convert(Float64, ts.nsec)*1E-9)
 
-
+#Base.convert(::Type{TimeVal}, x) = TimeVal(x)
+for T in (Float32, Float64)
+    @eval begin
+        Base.$T(tv::TimeVal)  = ($T(tv.sec) + $T(tv.usec)*$T(1E-6))
+        Base.$T(ts::TimeSpec) = ($T(ts.sec) + $T(ts.nsec)*$T(1E-9))
+        #Base.convert(::Type{$T}, tv::TimeVal) = $T(tv)
+        #Base.convert(::Type{$T}, ts::TimeSpec) = $T(ts)
+    end
+end
+Base.float(tv::TimeVal) = Float64(tv)
+Base.float(ts::TimeSpec) = Float64(ts)
 
 #function Base.(+)(ts::TimeSpec, tv::TimeVal)
 #    sec, nsec = divrem(ts.nsec + 1_000*tv.usec, 1_000_000_000)
@@ -461,3 +462,37 @@ more than 292.3 billions years).
 
 """
 isforever(ts::TimeSpec) = (ts.sec ≥ typemax(_typeof_tv_sec))
+
+"""
+    rounddown(a, b)
+
+yields largest multiple of `b` which is smaller or equal `a`.  Arguments and
+result are integers, `a` must be nonnegative, `b` must be striclty positive and
+result is nonnegative.
+
+See also: [`roundup`](@ref)
+
+"""
+rounddown(a::Integer, b::Integer) = div(a, b)*b
+
+"""
+    roundup(a, b)
+
+yields smallest multiple of `b` which is larger or equal `a`.  Arguments and
+result are integers, `a` must be nonnegative, `b` must be striclty positive and
+result is nonnegative.
+
+See also: [`rounddown`](@ref)
+
+"""
+roundup(a::Integer, b::Integer) = rounddown((b - one(b)) + a, b)
+
+"""
+     divrnd(a, b) -> q
+
+yields `a/b` rounded to the nearest integer.  Arguments are assumed to be
+positive integers.  The result is the same as `round(Int, a/b)` but (slightly)
+faster.
+
+"""
+divrnd(a::Integer, b::Integer) = div(2a + b, 2b)
