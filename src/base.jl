@@ -114,9 +114,9 @@ end
 
 function getparam(cam::Camera,
                   key::RegisterString{N,A}) :: String where {N,A<:Readable}
-    buf = Array{UInt8}(undef, N)
+    buf = Vector{UInt8}(undef, N)
     checkstatus(_readregister(cam, key, buf, N))
-    return unsafe_string(pointer(buf))
+    return String(buf)
 end
 
 function getparam(cam::Camera,
