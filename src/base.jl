@@ -53,9 +53,12 @@ Base.getindex(cam::Camera, param::Param) = getparam(cam, param)
 Base.getindex(cam::Camera, reg::Register) = getparam(cam, reg)
 Base.getindex(cam::Camera, key) = error("invalid key type `$(typeof(key))`")
 
-Base.setindex!(cam::Camera, val, param::Param) = setparam!(cam, param, val)
-Base.setindex!(cam::Camera, val, reg::Register) = setparam!(cam, reg, val)
-Base.setindex!(cam::Camera, val, key) = error("invalid key type `$(typeof(key))`")
+Base.setindex!(cam::Camera, val, param::Param) =
+    (setparam!(cam, param, val); return cam)
+Base.setindex!(cam::Camera, val, reg::Register) =
+    (setparam!(cam, reg, val); return cam)
+Base.setindex!(cam::Camera, val, key) =
+    error("invalid key type `$(typeof(key))`")
 
 # Other overrides.
 Base.eltype(cam::Camera) = eltype(eltype(cam.bufs))
@@ -306,6 +309,93 @@ hardware.
 flushcache(cam::Camera) =
     setparam!(cam, PHX_DUMMY_PARAM|PHX_CACHE_FLUSH, nothing)
 
+#------------------------------------------------------------------------------
+# Configuration
+# =============
+#
+
+CameraConfig(cam::Camera) = getconfig(cam)
+
+"""
+```julia
+checkconfig(cam, cfg) -> boolean
+```
+
+yields whether the settings in configuration `cfg` are suitable for the camera
+`cam`.  If keyword `throwerrors` is true, an exception is thrown if the
+configuration has some invalid settings.
+
+See also [`getconfig`](@ref), [`loadconfig`](@ref), [`saveconfig`](@ref) and
+[`updateconfig!`](@ref).
+
+"""
+checkconfig(cam::Camera{M,C}, cfg::C; throwerrors::Bool=false) where {M,C} =
+    error("not implemented")
+function checkconfig(cam::Camera, cfg::CameraConfig; throwerrors::Bool=false)
+    throwerrors && error("incompatible configuration type and camera model")
+    return false
+end
+
+# Timings: getconfig  ~ 13 ns
+#          getconfig! ~ 5.7 ns
+
+"""
+```julia
+getconfig(cam) -> cfg
+```
+
+yields a copy of the current configuration of camera `cam`.
+
+See also [`getconfig!`](@ref), [`setconfig`](@ref), [`loadconfig`](@ref),
+[`saveconfig`](@ref) and [`updateconfig!`](@ref).
+
+"""
+getconfig(cam::Camera{M,C}) where {M,C} = getconfig!(C(), cam)
+
+"""
+```julia
+getconfig!(cfg, cam) -> cfg
+```
+
+overwrites `cfg` with the current configuration of camera `cam` and returns
+`cfg`.
+
+ See also [`getconfig`](@ref), [`setconfig`](@ref), [`loadconfig`](@ref),
+[`saveconfig`](@ref) and [`updateconfig!`](@ref).
+
+"""
+getconfig!(cfg::C, cam::Camera{M,C}) where {M<:CameraModel,C<:CameraConfig} =
+    _fastcopy!(cfg, cam.config)
+getconfig!(cfg::CameraConfig, cam::Camera) =
+    error("incompatible configuration type and camera model")
+
+# Private method to copy the contents of mutable data.  Beware that its use
+# must be restricted to *simple* mutable structures which do not hold
+# references.
+function _fastcopy!(dst::T, src::T) where {T}
+    # @assert isconcretetype(T) # not needed, sizeof() will complain if T is an
+    #                           # abstract type
+    ccall(:memcpy, Ptr{Cvoid}, (Ref{T}, Ref{T}, Csize_t), dst, src, sizeof(T))
+    return dst
+end
+
+"""
+```julia
+setconfig!(cam, cfg) -> cam
+```
+
+applies the settings in configuration `cfg` to the camera `cam` and returns
+`cam`.
+
+See also [`getconfig`](@ref), [`loadconfig`](@ref), [`saveconfig`](@ref) and
+[`updateconfig!`](@ref).
+
+"""
+setconfig!(cam::Camera{M,C}, cfg::C) where {M,C} =
+    error("not implemented")
+setconfig!(cam::Camera, cfg::CameraConfig) =
+    error("incompatible configuration type and camera model")
+
 """
     saveconfig(cam, name, what = PHX_SAVE_ALL)
 
@@ -323,6 +413,9 @@ argument `what` specifies which parameters to save, it can be a combination
 
 - `PHX_SAVE_ALL` to save all three of the above types of parameters.
 
+See also [`getconfig`](@ref), [`setconfig!`](@ref), [`loadconfig`](@ref) and
+[`updateconfig!`](@ref).
+
 """
 function saveconfig(cam::Camera, name::AbstractString,
                     what::Integer = PHX_SAVE_ALL)
@@ -330,8 +423,26 @@ function saveconfig(cam::Camera, name::AbstractString,
     status = ccall(_PHX_Action[], Status,
                    (Handle, Action, ActionParam, Ptr{Cvoid}),
                    cam.handle, PHX_CONFIG_SAVE, what, cstring(name))
-    checkstatus(status)
+    return checkstatus(status)
 end
+
+"""
+```julia
+updateconfig!(cam; all=false) -> cam
+```
+
+updates the current configuration memorized by camera `cam`.  Normally only
+parameters that might change whithout being explicitly modified (like the
+temperature) are updated.  If keyword `all` is set true, all parameters are
+read from the device.  This should not be needed in case if the caching
+of parameters is done properly.
+
+See also [`getconfig`](@ref), [`setconfig!`](@ref), [`loadconfig`](@ref) and
+[`saveconfig`](@ref).
+
+"""
+updateconfig!(cam::Camera; all::Bool=false) =
+    error("not implemented for this kind of camera")
 
 #------------------------------------------------------------------------------
 # Reading/Writing CoaXPress Registers
@@ -411,7 +522,7 @@ See also: [`close`](@ref).
 
 """
 Base.open(::Type{M}; kwds...) where {M<:CameraModel} =
-    open(Camera{M}(); kwds...)
+    open(Camera(M); kwds...)
 
 function Base.open(cam::Camera;
                    configfile::String = "",
@@ -452,36 +563,33 @@ function Base.open(cam::Camera;
     cam.state = 1
 
     # Discover whether we have a CoaXPress camera.
-    if (cam[PHX_CXP_INFO] & PHX_CXP_CAMERA_DISCOVERED) == 0
-        cam.coaxpress = false
-    else
+    coaxpress = ((cam[PHX_CXP_INFO] & PHX_CXP_CAMERA_DISCOVERED) != 0)
+    if coaxpress != isa(cam, CoaXPressCamera)
+        error("(non-)CoaXPress camera not properly discovered")
+    end
+    if coaxpress
         # Figure out byte order.
-        magic = cam[CXP_STANDARD]
-        if magic == CXP_MAGIC
-            cam.coaxpress = true
-        elseif magic == bswap(CXP_MAGIC)
-            cam.coaxpress = true
+        magic = _read_magic(cam)
+        if magic == bswap(CXP_MAGIC)
             cam.swap = ! cam.swap
-        else
+        elseif magic != CXP_MAGIC
             error("unexpected magic number for CoaXPress camera")
         end
 
         # Get current width and height and initialize parameters.
-        width  = cam[CXP_WIDTH_ADDRESS]
-        height = cam[CXP_HEIGHT_ADDRESS]
+        width  = _read_width(cam)
+        height = _read_height(cam)
         cam[PHX_CAM_ACTIVE_XOFFSET] = 0
         cam[PHX_CAM_ACTIVE_YOFFSET] = 0
         cam[PHX_CAM_ACTIVE_XLENGTH] = width
         cam[PHX_CAM_ACTIVE_YLENGTH] = height
 
         if ! quiet
-            vendorname  = cam[CXP_DEVICE_VENDOR_NAME]
-            modelname   = cam[CXP_DEVICE_MODEL_NAME]
-            pixelformat = cam[CXP_PIXEL_FORMAT_ADDRESS]
-            @info "Vendor name:  $vendorname"
-            @info "Model name:   $modelname"
-            @info "Image size:   $width × $height pixels"
-            @info "Pixel format: 0x$(string(pixelformat, base=16))"
+            pixelformat =
+            println("  Vendor name:  ", _read_vendor_name(cam))
+            println("  Model name:   ", _read_device_model_name(cam))
+            println("  Image size:   $width × $height pixels")
+            println("  Pixel format: ",_read_pixel_format(cam))
         end
     end
 
